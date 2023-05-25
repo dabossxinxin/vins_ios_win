@@ -238,7 +238,7 @@ void FeatureTracker::showUndistortion(const std::string &name)
 std::vector<cv::Point2f> FeatureTracker::undistortedPoints()
 {
 	std::vector<cv::Point2f> un_pts;
-	for (unsigned int i = 0; i < cur_pts.size(); i++) {
+	for (unsigned int i = 0; i < cur_pts.size(); ++i) {
 		Eigen::Vector2d a(cur_pts[i].x, cur_pts[i].y);
 		Eigen::Vector3d b;
 		m_camera->liftProjective(a, b);

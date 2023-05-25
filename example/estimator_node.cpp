@@ -10,6 +10,7 @@
 #include <condition_variable>
 #include <opencv2/opencv.hpp>
 
+//#include "windows_player.h"
 #include "estimator.h"
 #include "parameters.h"
 #include "include/PointCloud.h"
@@ -208,12 +209,6 @@ void DrawCurrentCamera(pangolin::OpenGlMatrix &Twc)
 	glEnd();
 	glPopMatrix();
 }
-
-//void setImageData(unsigned char * imageArray, int size) {
-//	for (int i = 0; i < size; i++) {
-//		imageArray[i] = (unsigned char)(rand() / (RAND_MAX / 255.0));
-//	}
-//}
 
 void visualization()
 {
@@ -1104,6 +1099,7 @@ int main(int argc, char **argv)
 	cv::Mat image;
 	int ni = 0;
 
+	//PlayerWindows player;
 	readParameters(argv[1]);
 
 	estimator.setParameter();
@@ -1147,10 +1143,16 @@ int main(int argc, char **argv)
 	});
     callback_thread.detach();
 
-    bool emptyMeasure;
 	std::thread process_thread(process);
 	process_thread.detach();
 
+	/*std::unique_lock<std::mutex> player_lock(mutex_player);
+	player.m_keypose.emplace_back(estimator.Ps[WINDOW_SIZE]);
+	player.m_localLandmarks = std::move(estimator.local_cloud);
+	player.m_globalLandmarks = estimator.global_cloud;
+	player_lock.unlock();*/
+	//player.play();
+	
 	visualization();
 
 	return 0;
