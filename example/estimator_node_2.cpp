@@ -68,6 +68,11 @@ void track_imu(const sensor_msgs::ImuConstPtr& imu_msg);
 std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>, sensor_msgs::PointCloudConstPtr>>
 getMeasurements();
 
+void load_images(const std::string& path, std::vector<std::string>& imageFileNames, 
+	std::vector<double>& timeStamps);
+
+void load_imus(std::ifstream& fImus, const ros::Time& imageTimestamp);
+
 void frontend_track();
 
 void getLatestPose()
@@ -120,14 +125,14 @@ void predict(const sensor_msgs::ImuConstPtr& imu_msg)
 
 void imu_callback(const sensor_msgs::ImuConstPtr& imu_msg)
 {
-	std::unique_lock<std::mutex> buf_lock;
+	std::unique_lock<std::mutex> buf_lock(mutex_buf);
 	imu_buf.push(imu_msg);
 	buf_lock.unlock();
 }
 
 void feature_callback(const sensor_msgs::PointCloudConstPtr& feature_msg)
 {
-	std::unique_lock<std::mutex> buf_lock;
+	std::unique_lock<std::mutex> buf_lock(mutex_buf);
 	feature_buf.push(feature_msg);
 	buf_lock.unlock();
 
@@ -318,7 +323,138 @@ void frontend_track()
 	}
 }
 
-int main()
+void load_images(const std::string& path, std::vector<std::string>& imageFileNames,
+	std::vector<double>& timeStamps)
 {
+	std::ifstream fImages;
+	std::string filename = path + "/data.csv";
+	fImages.open(filename.c_str());
+	timeStamps.reserve(5000);
+	imageFileNames.reserve(5000);
+	while (!fImages.eof())
+	{
+		std::string s;
+		getline(fImages, s);
+		if (!s.empty())
+		{
+			char c = s.at(0);
+			if (c < '0' || c > '9')
+				continue;
+			std::stringstream ss;
+			ss << s;
+			double t;
+			ss >> t;
+			timeStamps.emplace_back(t / 1e9);
 
+			if (ss.peek() == ',' || ss.peek() == ' ')
+				ss.ignore();
+
+			std::string name;
+			ss >> name;
+			imageFileNames.emplace_back(path + "/data/" + name.c_str());
+		}
+	}
+}
+
+void load_imus(std::ifstream& fImus, const ros::Time& imageTimestamp)
+{
+	while (!fImus.eof())
+	{
+		std::string s;
+		getline(fImus, s);
+		if (!s.empty())
+		{
+			char c = s.at(0);
+			if (c < '0' || c > '9')
+				continue;
+			std::stringstream ss;
+			ss << s;
+			double tmpd;
+			int cnt = 0;
+			double data[7];
+			while (ss >> tmpd)
+			{
+				data[cnt] = tmpd;
+				cnt++;
+				if (cnt == 7)
+					break;
+				if (ss.peek() == ',' || ss.peek() == ' ')
+					ss.ignore();
+			}
+
+			data[0] *= 1e-9;
+			sensor_msgs::ImuPtr imudata(new sensor_msgs::Imu);
+			imudata->angular_velocity.x = data[1];
+			imudata->angular_velocity.y = data[2];
+			imudata->angular_velocity.z = data[3];
+			imudata->linear_acceleration.x = data[4];
+			imudata->linear_acceleration.y = data[5];
+			imudata->linear_acceleration.z = data[6];
+			uint32_t  sec = data[0];
+			uint32_t nsec = (data[0] - sec)*1e9;
+			//nsec = (nsec / 1000) * 1000 + 500;
+			imudata->header.stamp = ros::Time(sec, nsec);
+			imu_callback(imudata);
+
+			if (imudata->header.stamp > imageTimestamp)
+				break;
+		}
+	}
+}
+
+int main(int argc, char **argv)
+{
+	if (argc != 4)
+	{
+		console::print_error("Usage: ./vins_estimator path_to_setting_file path_to_image_folder path_to_imu_data_file\n");
+		return -1;
+	}
+
+	std::ifstream fImus;
+	fImus.open(argv[3]);
+	readParameters(argv[1]);
+
+	estimator.setParameter();
+	tracker.readIntrinsicParameter(CAM_NAMES[0]);
+
+	std::cout << "a" << std::endl;
+
+	std::vector<std::string> vStrImagesFileNames;
+	std::vector<double> vTimeStamps;
+	load_images(std::string(argv[2]), vStrImagesFileNames, vTimeStamps);
+	m_camera = CameraFactory::instance()->generateCameraFromYamlFile(CAM_NAMES_ESTIMATOR);
+
+	int imageNum = vStrImagesFileNames.size();
+	if (imageNum <= 0) {
+		console::print_error("ERROR: Failed to load images\n");
+		return 1;
+	}
+	else {
+		console::print_highlight("Load image num: ");
+		console::print_value("%d\n", imageNum);
+	}
+
+	std::thread callback_thread([&]() {
+		for (int it = 0; it < imageNum; ++it) {
+			double tframe = vTimeStamps[it];
+			uint32_t sec = tframe;
+			uint32_t nsec = (tframe - sec)*1e9;
+			//nsec = (nsec / 1000) * 1000 + 500;
+			ros::Time image_timestamp = ros::Time(sec, nsec);
+
+			load_imus(fImus, image_timestamp);
+			cv::Mat image = cv::imread(vStrImagesFileNames[it], cv::IMREAD_GRAYSCALE);
+
+			if (image.empty()) {
+				console::print_error("ERROR: failed to load image: %s\n", vStrImagesFileNames[it].c_str());
+				return -1;
+			}
+
+			image_callback(image, image_timestamp);
+		}
+	});
+	callback_thread.detach();
+
+	std::thread frontend_thread(frontend_track);
+	frontend_thread.join();
 }
