@@ -27,8 +27,6 @@ int sum_of_wait = 0;
 double first_image_time;
 bool first_image_flag = true;
 
-bool pub_this_frame = false;
-
 std::mutex mutex_buf;
 std::mutex mutex_state;
 std::queue<sensor_msgs::ImuConstPtr> imu_buf;
@@ -47,7 +45,11 @@ Eigen::Vector3d acc_0;
 Eigen::Vector3d gyr_0;
 
 std::mutex mutex_player;
+bool player_status = true;
 cv::Mat img_player;
+Eigen::Vector3d tcur;
+Eigen::Matrix3d rcur;
+Eigen::Matrix3d ric;
 Eigen::Vector3d ypr;
 Eigen::Vector3d tic;
 float process_freq = -1;
@@ -56,6 +58,252 @@ float feature_freq = -1;
 std::vector<Eigen::Vector3d> global_keypose;
 std::unordered_map<int, Eigen::Vector3d> local_landmarks;
 std::unordered_map<int, Eigen::Vector3d> global_landmarks;
+
+void saveGlobalLandmarks();
+void viewCameraLandmark();
+void viewCameraPath();
+void viewCameraPose(pangolin::OpenGlMatrix& M);
+void drawCurrentCamera(pangolin::OpenGlMatrix& Twc);
+void player();
+
+void saveGlobalLandmarks()
+{
+	std::string filename = "C:\\Users\\jackchen\\Desktop\\debug\\landmark.txt";
+	std::ofstream foutC(filename.c_str(), std::ios::app);
+	foutC.setf(std::ios::fixed, std::ios::floatfield);
+	foutC.precision(9);
+	for (const auto& pairs : global_landmarks) {
+		const auto& landmark = pairs.second;
+		foutC << landmark.x() << " " 
+			<< landmark.y() << " "
+			<< landmark.z() << std::endl;
+	}
+	foutC.close();
+}
+
+void viewCameraLandmark()
+{
+	std::unique_lock<std::mutex> lock_player(mutex_player);
+	glPointSize(1.5f);
+	glBegin(GL_POINTS);
+	glColor3f(0.0, 0.0, 1.0);
+	for (const auto& pairs : local_landmarks) {
+		const auto& landmark = pairs.second;
+		if (std::abs(landmark.x()) > 10 ||
+			std::abs(landmark.y()) > 10 ||
+			std::abs(landmark.z()) > 10) {
+			continue;
+		}
+		glVertex3f(landmark.x(), landmark.y(), landmark.z());
+	}
+	glEnd();
+
+	glPointSize(1.5f);
+	glBegin(GL_POINTS);
+	glColor3f(0.0, 0.0, 0.0);
+	for (const auto& pairs : global_landmarks) {
+		const auto& landmark = pairs.second;
+		if (std::abs(landmark.x()) > 10 ||
+			std::abs(landmark.y()) > 10 ||
+			std::abs(landmark.z()) > 10) {
+			continue;
+		}
+		glVertex3f(landmark.x(), landmark.y(), landmark.z());
+	}
+	glEnd();
+
+	lock_player.unlock();
+}
+void viewCameraPath()
+{
+	std::unique_lock<std::mutex> lock_player(mutex_player);
+	GLfloat line_width = 1.2;
+	Eigen::Vector3d tmp_path;
+	glColor3f(1.0f, 0.0f, 0.0f);
+	glLineWidth(line_width);
+	glBegin(GL_LINE_STRIP);
+
+	for (const auto& it : global_keypose) {
+		glVertex3f(it.x(), it.y(), it.z());
+	}
+	glEnd();
+	lock_player.unlock();
+}
+void viewCameraPose(pangolin::OpenGlMatrix& M)
+{
+	Eigen::Vector3d P = tcur + rcur * tic;
+	Eigen::Matrix3d R = rcur * ric;
+
+	M.m[0] = R(0, 0);
+	M.m[1] = R(1, 0);
+	M.m[2] = R(2, 0);
+	M.m[3] = 0.0;
+
+	M.m[4] = R(0, 1);
+	M.m[5] = R(1, 1);
+	M.m[6] = R(2, 1);
+	M.m[7] = 0.0;
+
+	M.m[8] = R(0, 2);
+	M.m[9] = R(1, 2);
+	M.m[10] = R(2, 2);
+	M.m[11] = 0.0;
+
+	M.m[12] = P.x();
+	M.m[13] = P.y();
+	M.m[14] = P.z();
+	M.m[15] = 1.0;
+}
+void drawCurrentCamera(pangolin::OpenGlMatrix& Twc)
+{
+	const float &w = 0.08f;
+	const float h = w * 0.75;
+	const float z = w * 0.6;
+
+	glPushMatrix();
+
+#ifdef HAVE_GLES
+	glMultMatrixf(Twc.m);
+#else
+	glMultMatrixd(Twc.m);
+#endif
+
+	glLineWidth(2);				//set line width
+	glColor3f(0.0f, 0.0f, 1.0f);	//blue
+	glBegin(GL_LINES);			//draw camera 
+	glVertex3f(0, 0, 0);
+	glVertex3f(w, h, z);
+	glVertex3f(0, 0, 0);
+	glVertex3f(w, -h, z);
+	glVertex3f(0, 0, 0);
+	glVertex3f(-w, -h, z);
+	glVertex3f(0, 0, 0);
+	glVertex3f(-w, h, z);
+
+	glVertex3f(w, h, z);
+	glVertex3f(w, -h, z);
+	glVertex3f(-w, h, z);
+	glVertex3f(-w, -h, z);
+	glVertex3f(-w, h, z);
+	glVertex3f(w, h, z);
+	glVertex3f(-w, -h, z);
+	glVertex3f(w, -h, z);
+	glEnd();
+	glPopMatrix();
+}
+void player()
+{
+	int img_rows = 480;
+	int img_cols = 752;
+	float mViewpointX = -0;
+	float mViewpointY = -5;
+	float mViewpointZ = -10;
+	float mViewpointF = 500;
+	img_player = cv::Mat::zeros(img_rows, img_cols, CV_8UC3);
+	pangolin::CreateWindowAndBind("VINS: Map Visualization", 1024, 768);
+	glEnable(GL_DEPTH_TEST);
+	pangolin::CreatePanel("menu").SetBounds(0.0, 1.0, 0.0, float(300.0 / 1024.0));
+	pangolin::Var<bool> menuFollowCamera("menu.Follow Camera", true, true);
+	pangolin::Var<bool> menuShowPoints("menu.Show Points", true, true);
+	pangolin::Var<bool> menuShowPath("menu.Show Path", true, true);
+
+	// 添加外参曲线图
+	pangolin::DataLog logTic;
+	std::vector<std::string> labelTic;
+	labelTic.emplace_back(std::string("Tic.x"));
+	labelTic.emplace_back(std::string("Tic.y"));
+	labelTic.emplace_back(std::string("Tic.z"));
+	logTic.SetLabels(labelTic);
+
+	pangolin::DataLog logRic;
+	std::vector<std::string> labelRic;
+	labelRic.emplace_back(std::string("yaw"));
+	labelRic.emplace_back(std::string("pitch"));
+	labelRic.emplace_back(std::string("roll"));
+	logRic.SetLabels(labelRic);
+
+	pangolin::DataLog logFREQ;
+	std::vector<std::string> labelFREQ;
+	labelFREQ.emplace_back(std::string("feature_freq"));
+	labelFREQ.emplace_back(std::string("process_freq"));
+	labelFREQ.emplace_back(std::string("show_freq"));
+	logFREQ.SetLabels(labelFREQ);
+
+	pangolin::Plotter plotterRic(&logRic, 0.0f, 100.0f, -0.02f, 0.02f, 10.0f, 0.001f);
+	plotterRic.SetBounds(float(240.0 / 768.0), float(440.0 / 768.0), float(10.0 / 1024.0), float(290.0 / 1024.0));
+	plotterRic.Track("$i");
+
+	pangolin::Plotter plotterTic(&logTic, 0.0f, 100.0f, -0.02f, 0.02f, 10.0f, 0.001f);
+	plotterTic.SetBounds(float(20.0 / 768.0), float(220.0 / 768.0), float(10.0 / 1024.0), float(290.0 / 1024.0));
+	plotterTic.Track("$i");
+
+	pangolin::Plotter plotterFREQ(&logFREQ, 0.0f, 100.0f, 0.0f, 20.0f, 10.0f, 0.5f);
+	plotterFREQ.SetBounds(float(460.0 / 768.0), float(660.0 / 768.0), float(10.0 / 1024.0), float(290.0 / 1024.0));
+	plotterFREQ.Track("$i");
+
+	pangolin::DisplayBase().AddDisplay(plotterRic);
+	pangolin::DisplayBase().AddDisplay(plotterTic);
+	pangolin::DisplayBase().AddDisplay(plotterFREQ);
+
+	pangolin::OpenGlRenderState s_cam(
+		pangolin::ProjectionMatrix(1024, 768, mViewpointF, mViewpointF, 512, 389, 0.1, 1000),
+		pangolin::ModelViewLookAt(mViewpointX, mViewpointY, mViewpointZ, 0, 0, 0, VISUALLOOKATX, VISUALLOOKATY, VISUALLOOKATZ)
+	);
+
+	pangolin::View& d_cam = pangolin::CreateDisplay()
+		.SetBounds(0.0, 1.0, float(300.0 / 1024.0), 1.0, -1024.0f / 768.0f)
+		.SetHandler(new pangolin::Handler3D(s_cam));
+
+	float ratio = float(img_rows) / float(img_cols);
+	int img_width = 280;
+	int img_height = 280.0*ratio;
+	pangolin::View& d_image = pangolin::CreateDisplay()
+		.SetBounds(float(768 - img_height) / 768.0, 1.0f, float(300.0 / 1024.0), float(300 + img_width) / 1024.0, float(img_width) / img_height)
+		.SetLock(pangolin::LockLeft, pangolin::LockTop);
+
+	unsigned char* imageArray = new unsigned char[3 * img_rows*img_cols];
+	pangolin::GlTexture imageTexture(img_cols, img_rows, GL_RGB, false, 0, GL_RGB, GL_UNSIGNED_BYTE);
+
+	pangolin::OpenGlMatrix Twc;
+	Twc.SetIdentity();
+
+	while (!pangolin::ShouldQuit() & player_status) {
+		TicToc t_show_static;
+
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		viewCameraPose(Twc);
+		glClearColor(1.0f, 1.0f, 1.0f, 0.5f);
+
+		logRic.Log(ypr(0), ypr(1), ypr(2));
+		logTic.Log(tic(0), tic(1), tic(2));
+		logFREQ.Log(feature_freq, process_freq, player_freq);
+
+		if (menuFollowCamera) {
+			s_cam.Follow(Twc);
+		}
+
+		d_cam.Activate(s_cam);
+		drawCurrentCamera(Twc);
+		if (menuShowPoints) 
+			viewCameraLandmark();
+
+		if (menuShowPath) 
+			viewCameraPath();
+
+		d_image.Activate();
+		glColor3f(1.0f, 1.0f, 1.0f);
+		
+		memcpy(imageArray, img_player.data, sizeof(uchar) * 3 * img_rows*img_cols);
+		imageTexture.Upload(imageArray, GL_RGB, GL_UNSIGNED_BYTE);
+		imageTexture.RenderToViewport();
+		
+		pangolin::FinishFrame();
+		//console::print_highlight("INFO: visualization thread time: %.1f ms\n", t_show);
+	}
+
+	saveGlobalLandmarks();
+	console::print_highlight("Visualization thread end.\n");
+}
 
 void getLatestPose();
 void predict(const sensor_msgs::ImuConstPtr& imu_msg);
@@ -149,7 +397,7 @@ void image_callback(const cv::Mat& img_msg, const ros::Time& timestamp)
 
 	if (std::round(1.0*pub_count / (timestamp.toSec() - first_image_time)) <= FREQ)
 	{
-		pub_this_frame = true;
+		PUB_THIS_FRAME = true;
 		if (std::abs(1.0*pub_count / (timestamp.toSec() - first_image_time) - FREQ) < 0.01*FREQ)
 		{
 			first_image_time = timestamp.toSec();
@@ -158,7 +406,7 @@ void image_callback(const cv::Mat& img_msg, const ros::Time& timestamp)
 	}
 	else 
 	{
-		pub_this_frame = false;
+		PUB_THIS_FRAME = false;
 	}
 
 	tracker.readImage(img_msg);
@@ -171,7 +419,7 @@ void image_callback(const cv::Mat& img_msg, const ros::Time& timestamp)
 			break;
 	}
 
-	if (pub_this_frame)
+	if (PUB_THIS_FRAME)
 	{
 		pub_count++;
 		sensor_msgs::PointCloudPtr feature_points(new sensor_msgs::PointCloud);
@@ -290,7 +538,7 @@ void frontend_track()
 			const auto& img_msg = measurement.second;
 			std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>> image;
 			for (unsigned int i = 0; i < img_msg->points.size(); ++i) {
-				int v = img_msg->channels[0].values[i] + 0.5;
+				int v = img_msg->channels[0].values[i];
 				int feature_id = v / NUM_OF_CAM;
 				int camera_id = v % NUM_OF_CAM;
 				double x = img_msg->points[i].x;
@@ -309,6 +557,9 @@ void frontend_track()
 				local_landmarks = std::move(estimator.local_cloud);
 				global_landmarks = estimator.global_cloud;
 				tic = estimator.tic[0];
+				ric = estimator.ric[0];
+				tcur = estimator.Ps[WINDOW_SIZE];
+				rcur = estimator.Rs[WINDOW_SIZE];
 				ypr = Utility::R2ypr(estimator.ric[0]);
 				player_lock.unlock();
 			}
@@ -456,5 +707,9 @@ int main(int argc, char **argv)
 	callback_thread.detach();
 
 	std::thread frontend_thread(frontend_track);
-	frontend_thread.join();
+	frontend_thread.detach();
+
+	player();
+
+	return 0;
 }

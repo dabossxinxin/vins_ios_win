@@ -230,7 +230,7 @@ void FeatureManager::triangulate(Eigen::Vector3d Ps[], Eigen::Vector3d tic[], Ei
 		it_per_id.estimated_depth = svd_method;
         //it_per_id->estimated_depth = INIT_DEPTH;
 
-        if (it_per_id.estimated_depth < 0.1) {
+        if (it_per_id.estimated_depth < 0.1 || it_per_id.estimated_depth >= 5) {
 			it_per_id.estimated_depth = INIT_DEPTH;
         }
     }
@@ -271,7 +271,7 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
                 Eigen::Vector3d pts_i = uv_i * it->estimated_depth;
                 Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;
                 Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P);
-                double dep_j = pts_j(2);
+				double dep_j = pts_j(2);
                 if (dep_j > 0)
                     it->estimated_depth = dep_j;
                 else

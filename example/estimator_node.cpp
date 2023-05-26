@@ -93,6 +93,21 @@ std::vector<Eigen::Vector3d> global_keypose;
 std::unordered_map<int, Eigen::Vector3d> local_landmarks;
 std::unordered_map<int, Eigen::Vector3d> global_landmarks;
 
+void saveGlobalLandmarks()
+{
+	std::string filename = "C:\\Users\\jackchen\\Desktop\\debug\\landmark.txt";
+	std::ofstream foutC(filename.c_str(), std::ios::app);
+	foutC.setf(std::ios::fixed, std::ios::floatfield);
+	foutC.precision(9);
+	for (const auto& pairs : global_landmarks) {
+		const auto& landmark = pairs.second;
+		foutC << landmark.x() << " "
+			<< landmark.y() << " "
+			<< landmark.z() << std::endl;
+	}
+	foutC.close();
+}
+
 void updateLoopPath(nav_msgs::Path _loop_path)
 {
     loop_path = _loop_path;
@@ -347,6 +362,7 @@ void visualization()
 
 		console::print_highlight("INFO: visualization thread time: %.1f ms\n", t_show);
 	}
+	saveGlobalLandmarks();
 	console::print_highlight("Visualization thread end.\n");
 	view_done = true;
 }
