@@ -20,8 +20,8 @@ set(INFO_PLIST_TEMPLATE ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Info.plist)
 
 set(VINS_IOS_PLAYER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Odometry.swift
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ODOMETRY.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ODOMETRY.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/OdometryC.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/OdometryC.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Camera.swift
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Motion.swift
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AppDelegate.swift
