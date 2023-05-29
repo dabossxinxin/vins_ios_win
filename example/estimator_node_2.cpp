@@ -83,7 +83,6 @@ void saveGlobalLandmarks()
 
 void viewCameraLandmark()
 {
-	std::unique_lock<std::mutex> lock_player(mutex_player);
 	glPointSize(1.5f);
 	glBegin(GL_POINTS);
 	glColor3f(0.0, 0.0, 1.0);
@@ -111,14 +110,10 @@ void viewCameraLandmark()
 		glVertex3f(landmark.x(), landmark.y(), landmark.z());
 	}
 	glEnd();
-
-	lock_player.unlock();
 }
 void viewCameraPath()
 {
-	std::unique_lock<std::mutex> lock_player(mutex_player);
 	GLfloat line_width = 1.2;
-	Eigen::Vector3d tmp_path;
 	glColor3f(1.0f, 0.0f, 0.0f);
 	glLineWidth(line_width);
 	glBegin(GL_LINE_STRIP);
@@ -127,7 +122,6 @@ void viewCameraPath()
 		glVertex3f(it.x(), it.y(), it.z());
 	}
 	glEnd();
-	lock_player.unlock();
 }
 void viewCameraPose(pangolin::OpenGlMatrix& M)
 {
@@ -274,6 +268,8 @@ void player()
 		viewCameraPose(Twc);
 		glClearColor(1.0f, 1.0f, 1.0f, 0.5f);
 
+		std::unique_lock<std::mutex> player_lock(mutex_player);
+
 		logRic.Log(ypr(0), ypr(1), ypr(2));
 		logTic.Log(tic(0), tic(1), tic(2));
 		logFREQ.Log(feature_freq, process_freq, player_freq);
@@ -284,7 +280,7 @@ void player()
 
 		d_cam.Activate(s_cam);
 		drawCurrentCamera(Twc);
-		if (menuShowPoints) 
+		if (menuShowPoints)
 			viewCameraLandmark();
 
 		if (menuShowPath) 
@@ -296,7 +292,8 @@ void player()
 		memcpy(imageArray, img_player.data, sizeof(uchar) * 3 * img_rows*img_cols);
 		imageTexture.Upload(imageArray, GL_RGB, GL_UNSIGNED_BYTE);
 		imageTexture.RenderToViewport();
-		
+
+		player_lock.unlock();
 		pangolin::FinishFrame();
 		//console::print_highlight("INFO: visualization thread time: %.1f ms\n", t_show);
 	}
