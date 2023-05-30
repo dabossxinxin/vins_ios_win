@@ -326,7 +326,7 @@ void getLatestPose()
 	tmp_P = estimator.Ps[WINDOW_SIZE];
 	tmp_Q = estimator.Rs[WINDOW_SIZE];
 	tmp_V = estimator.Vs[WINDOW_SIZE];
-	tmp_Ba = estimator.Bas[WINDOW_SIZE];
+    tmp_Ba = estimator.Bas[WINDOW_SIZE];
 	tmp_Bg = estimator.Bgs[WINDOW_SIZE];
 
 	acc_0 = estimator.acc_0;

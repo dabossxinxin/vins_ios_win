@@ -32,13 +32,11 @@ class Odometry : CameraDelegate, MotionDelegate {
     }
     
     func motionDidGyroscopeUpdate(timestamp: Double, rotationRateX: Double, rotationRateY: Double, rotationRateZ: Double) {
-        NSLog("Gyro value: [%.3f, %.3f, %.3f]", rotationRateX, rotationRateY, rotationRateZ)
+        slamer.gyr_callback(timestamp, x: rotationRateX, y: rotationRateY, z: rotationRateZ)
     }
     
     func motionDidAccelerometerUpdate(timestamp: Double, accelerationX: Double, accelerationY: Double, accelerationZ: Double) {
-        NSLog("Acce value: [%.3f, %.3f, %.3f]", accelerationX, accelerationY, accelerationZ)
+        slamer.acc_callback(timestamp, x: accelerationX, y: accelerationY, z: accelerationZ)
     }
-    
-    
 }
 

@@ -63,10 +63,43 @@
     Eigen::Vector3d acc_0;
     Eigen::Vector3d gyr_0;
     
+    sensor_msgs::ImuConstPtr curr_acc;
+    std::vector<sensor_msgs::ImuConstPtr> gyro_buf;
+        
     std::mutex mutex_player;
     std::vector<Eigen::Vector3d> global_keypose;
     std::unordered_map<int, Eigen::Vector3d> local_landmarks;
     std::unordered_map<int, Eigen::Vector3d> global_landmarks;
+}
+
+std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCloudConstPtr>> getMeasurements(ODOMETRY const* odo) {
+    std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCloudConstPtr>> measurements;
+    
+    while(true) {
+        if (odo->imu_buf.empty() || odo->feature_buf.empty())
+            return measurements;
+        if (!(odo->imu_buf.back()->header.stamp > odo->feature_buf.front()->header.stamp)) {
+            console::print_warn("WARN:wait for imu,only should happen at the beginning.\n");
+            odo->sum_of_wait++;
+            return measurements;
+        }
+
+        if (!(odo->imu_buf.front()->header.stamp < odo->feature_buf.front()->header.stamp)) {
+            console::print_warn("WARN:throw img,only should happen at the beginning.\n");
+            odo->feature_buf.pop();
+            continue;
+        }
+        sensor_msgs::PointCloudConstPtr img_msg = odo->feature_buf.front();
+        odo->feature_buf.pop();
+
+        std::vector<sensor_msgs::ImuConstPtr> IMUs;
+        while (odo->imu_buf.front()->header.stamp <= img_msg->header.stamp) {
+            IMUs.emplace_back(odo->imu_buf.front());
+            odo->imu_buf.pop();
+        }
+        measurements.emplace_back(IMUs, img_msg);
+    }
+    return measurements;
 }
 
 - (id)init {
@@ -76,8 +109,54 @@
     
     self->current_time = -1;
     self->latest_time = -1;
+    self->curr_acc = nullptr;
     
     return self;
+}
+
+- (void)process {
+    while(true) {
+        std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>, sensor_msgs::PointCloudConstPtr>> measurements;
+        std::unique_lock<std::mutex> buf_lock(mutex_buf);
+        con.wait(buf_lock,[&]{
+            return (measurements = getMeasurements(self)).size() != 0;
+        });
+        buf_lock.unlock();
+        
+        for (const auto& measurement : measurements) {
+            for (const auto& imu_msg : measurement.first)
+                [self track_imu:imu_msg->header.stamp.toSec() ax:imu_msg->linear_acceleration.x ay:imu_msg->linear_acceleration.y az:imu_msg->linear_acceleration.z gx:imu_msg->angular_velocity.x gy:imu_msg->angular_velocity.y gz:imu_msg->angular_velocity.z];
+            
+            const auto& img_msg = measurement.second;
+            std::map<int,std::vector<std::pair<int,Eigen::Vector3d>>> image;
+            for (unsigned int i = 0; i < img_msg->points.size(); ++i) {
+                int feature_id = img_msg->channels[0].values[i];
+                double x = img_msg->points[i].x;
+                double y = img_msg->points[i].y;
+                double z = img_msg->points[i].z;
+                assert(z == 1);
+                image[feature_id].emplace_back(0, Eigen::Vector3d(x, y, z));
+            }
+            
+            //estimator.processImage(image, img_msg->header);
+            
+            if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
+                std::unique_lock<std::mutex> player_lock(mutex_player);
+                global_keypose.emplace_back(estimator.Ps[WINDOW_SIZE]);
+                local_landmarks = std::move(estimator.local_cloud);
+                global_landmarks = estimator.global_cloud;
+                player_lock.unlock();
+            }
+        }
+        
+        mutex_buf.lock();
+        mutex_state.lock();
+        if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
+            [self latestPose_callback];
+        }
+        mutex_state.unlock();
+        mutex_buf.unlock();
+    }
 }
 
 - (void)processBuffer:(CMSampleBufferRef)buffer {
@@ -101,12 +180,54 @@
     uiimage = MatToUIImage(rgb_image);
 }
 
-- (void)trackGyroscope:(double)t x:(double)x y:(double)y z:(double)z {
+- (void)gyr_callback:(double)t x:(double)x y:(double)y z:(double)z {
+    sensor_msgs::ImuPtr gyr_msg(new sensor_msgs::Imu);
+    gyr_msg->header.stamp = ros::Time(t);
+    gyr_msg->angular_velocity.x = x;
+    gyr_msg->angular_velocity.y = y;
+    gyr_msg->angular_velocity.z = z;
     
+    if (self->gyro_buf.empty()) {
+        self->gyro_buf.emplace_back(gyr_msg);
+        self->gyro_buf.emplace_back(gyr_msg);
+    } else {
+        self->gyro_buf[0] = self->gyro_buf[1];
+        self->gyro_buf[1] = gyr_msg;
+    }
+    
+    if (!self->curr_acc)
+        return;
+    
+    sensor_msgs::ImuPtr imu_msg(new sensor_msgs::Imu);
+    if (self->curr_acc->header.stamp >= self->gyro_buf[0]->header.stamp &&
+        self->curr_acc->header.stamp <= self->gyro_buf[1]->header.stamp) {
+        imu_msg->header.stamp = self->curr_acc->header.stamp;
+        imu_msg->linear_acceleration = self->curr_acc->linear_acceleration;
+        
+        imu_msg->angular_velocity.x = gyro_buf[0]->angular_velocity.x +(self->curr_acc->header.stamp.toSec() - gyro_buf[0]->header.stamp.toSec())*(gyro_buf[1]->angular_velocity.x-gyro_buf[0]->angular_velocity.x)/(gyro_buf[1]->header.stamp.toSec()-gyro_buf[0]->header.stamp.toSec());
+        imu_msg->angular_velocity.y = gyro_buf[0]->angular_velocity.y +(self->curr_acc->header.stamp.toSec() - gyro_buf[0]->header.stamp.toSec())*(gyro_buf[1]->angular_velocity.y-gyro_buf[0]->angular_velocity.y)/(gyro_buf[1]->header.stamp.toSec()-gyro_buf[0]->header.stamp.toSec());
+        imu_msg->angular_velocity.z = gyro_buf[0]->angular_velocity.z +(self->curr_acc->header.stamp.toSec() - gyro_buf[0]->header.stamp.toSec())*(gyro_buf[1]->angular_velocity.z-gyro_buf[0]->angular_velocity.z)/(gyro_buf[1]->header.stamp.toSec()-gyro_buf[0]->header.stamp.toSec());
+        
+        [self imu_callback:imu_msg->header.stamp.toSec() ax:imu_msg->linear_acceleration.x ay:imu_msg->linear_acceleration.y az:imu_msg->linear_acceleration.z gx:imu_msg->angular_velocity.x gy:imu_msg->angular_velocity.y gz:imu_msg->angular_velocity.z];
+        
+        std::cout << "imu_msg: " << std::setprecision(8)
+                  << imu_msg->header.stamp.toSec() << ", "
+                  << imu_msg->linear_acceleration.x << ", "
+                  << imu_msg->linear_acceleration.y << ", "
+                  << imu_msg->linear_acceleration.z << ", "
+                  << imu_msg->angular_velocity.x << ", "
+                  << imu_msg->angular_velocity.y << ", "
+                  << imu_msg->angular_velocity.z << ", " << std::endl;
+    }
 }
 
-- (void)trackAccelerometer:(double)t x:(double)x y:(double)y z:(double)z {
-    
+- (void)acc_callback:(double)t x:(double)x y:(double)y z:(double)z {
+    sensor_msgs::ImuPtr imu_msg(new sensor_msgs::Imu);
+    imu_msg->header.stamp = ros::Time(t);
+    imu_msg->linear_acceleration.x = x;
+    imu_msg->linear_acceleration.y = y;
+    imu_msg->linear_acceleration.z = z;
+    self->curr_acc = imu_msg;
 }
 
 - (void)imu_callback:(double)t ax:(double)ax ay:(double)ay az:(double)az gx:(double)gx gy:(double)gy gz:(double)gz {
@@ -123,6 +244,70 @@
     imu_buf.push(imu_msg);
     buf_lock.unlock();
 }
+
+- (void)latestPose_callback {
+    self->latest_time = self->current_time;
+    self->tmp_P = self->estimator.Ps[WINDOW_SIZE];
+    self->tmp_Q = self->estimator.Rs[WINDOW_SIZE];
+    self->tmp_V = self->estimator.Vs[WINDOW_SIZE];
+    self->tmp_Ba = self->estimator.Bas[WINDOW_SIZE];
+    self->tmp_Bg = self->estimator.Bgs[WINDOW_SIZE];
+
+    self->acc_0 = self->estimator.acc_0;
+    self->gyr_0 = self->estimator.gyr_0;
+
+    auto& tmp_imu_buf = self->imu_buf;
+    for (; !tmp_imu_buf.empty(); tmp_imu_buf.pop()) {
+        auto& imu_msg = tmp_imu_buf.front();
+        [self track_imu:imu_msg->header.stamp.toSec() ax:imu_msg->linear_acceleration.x ay:imu_msg->linear_acceleration.y az:imu_msg->linear_acceleration.z gx:imu_msg->angular_velocity.x gy:imu_msg->angular_velocity.y gz:imu_msg->angular_velocity.z];
+    }
+}
+        
+
+- (void)predict:(double)t ax:(double)ax ay:(double)ay az:(double)az gx:(double)gx gy:(double)gy gz:(double)gz {
+    double dt = t - latest_time;
+    latest_time = t;
+
+    Eigen::Vector3d linear_acceleration{ax,ay,az};
+    Eigen::Vector3d angular_velocity{gx,gy,gz};
+
+    Eigen::Vector3d un_acc_0 = tmp_Q * (acc_0 - tmp_Ba - tmp_Q.inverse()*estimator.g);
+    Eigen::Vector3d un_gyr = 0.5*(gyr_0 + angular_velocity) - tmp_Bg;
+    
+    tmp_Q = tmp_Q * Utility::deltaQ(un_gyr*dt);
+
+    Eigen::Vector3d un_acc_1 = tmp_Q * (linear_acceleration - tmp_Ba - tmp_Q.inverse()*estimator.g);
+    Eigen::Vector3d un_acc = 0.5*(un_acc_0 + un_acc_1);
+
+    tmp_P = tmp_P + tmp_V * dt + 0.5*dt*dt*un_acc;
+    tmp_V = tmp_V + un_acc * dt;
+
+    acc_0 = linear_acceleration;
+    gyr_0 = angular_velocity;
+}
+
+
+- (void)track_imu:(double)t ax:(double)ax ay:(double)ay az:(double)az gx:(double)gx gy:(double)gy gz:(double)gz {
+    if (self->current_time < 0) {
+        self->current_time = t;
+    }
+    double dt = t - self->current_time;
+    self->current_time = t;
+    
+    double ba[]{0.0,0.0,0.0};
+    double bg[]{0.0,0.0,0.0};
+    
+    double dx = ax - ba[0];
+    double dy = ay - ba[1];
+    double dz = az - ba[2];
+    
+    double rx = gx - bg[0];
+    double ry = gy - bg[1];
+    double rz = gz - bg[2];
+    
+    estimator.processIMU(dt, Eigen::Vector3d(dx,dy,dz), Eigen::Vector3d(rx,ry,rz));
+}
+
 
 - (void)image_callback:(double)t buffer:(CMSampleBufferRef)buffer {
     [self processBuffer:buffer];

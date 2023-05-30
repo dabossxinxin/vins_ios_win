@@ -26,8 +26,6 @@ struct Vector3_
   (void)_alloc;
     }
 
-
-
    typedef double _x_type;
   _x_type x;
 
@@ -36,9 +34,6 @@ struct Vector3_
 
    typedef double _z_type;
   _z_type z;
-
-
-
 
   typedef boost::shared_ptr< geometry_msgs::Vector3_<ContainerAllocator> > Ptr;
   typedef boost::shared_ptr< geometry_msgs::Vector3_<ContainerAllocator> const> ConstPtr;
