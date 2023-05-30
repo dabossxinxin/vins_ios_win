@@ -122,10 +122,10 @@ namespace ros
 
 		double toSec()  const 
 		{ 
-			return (double)sec + 1e-9*(double)nsec; 
+            return (double)sec + 1e-9*(double)nsec;
 		};
 		T& fromSec(double t) {
-			sec = (uint32_t)floor(t);
+            sec = (uint32_t)floor(t);
 			nsec = (uint32_t)boost::math::round((t - sec) * 1e9);
 			// avoid rounding errors
 			sec += (nsec / 1000000000ul);

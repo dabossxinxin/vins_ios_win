@@ -4,10 +4,18 @@
 //
 //  Created by 熊鑫鑫 on 2023/5/22.
 //
+
+#ifndef ODOMETRYC_H
+#define ODOMETRYC_H
+
+#ifdef __OBJC__
+
 #import <Foundation/Foundation.h>
 #import <SceneKit/SceneKit.h>
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
+
+#endif
 
 @interface ODOMETRY : NSObject
 
@@ -17,14 +25,17 @@ typedef NS_ENUM(NSUInteger, SysState) {
     SYS_CRASH,
     SYS_UNKNOWN
 };
-
+- (id)init;
 - (void)processBuffer:(CMSampleBufferRef)buffer;
 - (void)trackGyroscope:(double)t x:(double)x y:(double)y z:(double)z;
 - (void)trackAccelerometer:(double)t x:(double)x y:(double)y z:(double)z;
-- (void)trackCamera:(double)t buffer:(CMSampleBufferRef)buffer;
+- (void)imu_callback:(double)t ax:(double)ax ay:(double)ay az:(double)az gx:(double)gx gy:(double)gy gz:(double)gz;
+- (void)image_callback:(double)t buffer:(CMSampleBufferRef)buffer;
 - (SCNVector3)getCameraPosition;
 - (SCNQuaternion)getCameraRotation;
 - (SysState)getSystemState;
 - (UIImage*)getUIImage;
 
 @end
+
+#endif
