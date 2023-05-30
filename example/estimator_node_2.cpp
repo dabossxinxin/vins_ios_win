@@ -347,7 +347,6 @@ void predict(const sensor_msgs::ImuConstPtr& imu_msg)
 	double dy = imu_msg->linear_acceleration.y;
 	double dz = imu_msg->linear_acceleration.z;
 	Eigen::Vector3d linear_acceleration{ dx,dy,dz };
-
 	double rx = imu_msg->angular_velocity.x;
 	double ry = imu_msg->angular_velocity.y;
 	double rz = imu_msg->angular_velocity.z;
