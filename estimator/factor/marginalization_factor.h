@@ -62,9 +62,9 @@ public:
 	std::unordered_map<long, int> parameter_block_idx;	//local size
 	std::unordered_map<long, double*> parameter_block_data;
 
-	std::vector<int> keep_block_size; //global size
-	std::vector<int> keep_block_idx;  //local size
-	std::vector<double*> keep_block_data;
+	std::vector<int> keep_block_size; //global size 边缘化后保留下的数据的维度
+	std::vector<int> keep_block_idx;  //local size 边缘化后保留下来的数据索引
+	std::vector<double*> keep_block_data; // 边缘化后保留下来的数据
 
 	Eigen::MatrixXd linearized_jacobians;
 	Eigen::VectorXd linearized_residuals;

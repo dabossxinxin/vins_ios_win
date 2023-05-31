@@ -405,7 +405,7 @@ void image_callback(const cv::Mat& img_msg, const ros::Time& timestamp)
 		PUB_THIS_FRAME = false;
 	}
 
-	tracker.readImage(img_msg);
+	tracker.readImage(img_msg, timestamp.toSec());
 
 	for (unsigned int i = 0;; i++)
 	{
@@ -427,7 +427,7 @@ void image_callback(const cv::Mat& img_msg, const ros::Time& timestamp)
 		feature_points->header.frame_id = "world";
 
 		std::set<int> hash_ids;
-		auto un_pts = tracker.undistortedPoints();
+		auto &un_pts = tracker.cur_un_pts;
 		auto &cur_pts = tracker.cur_pts;
 		auto &ids = tracker.ids;
 		for (int j = 0; j < int(ids.size()); ++j) {
@@ -532,16 +532,20 @@ void frontend_track()
 				track_imu(imu_msg);
 
 			const auto& img_msg = measurement.second;
-			std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>> image;
+			std::map<int, std::vector<std::pair<int, Eigen::Matrix<double,7,1>>>> image;
 			for (unsigned int i = 0; i < img_msg->points.size(); ++i) {
-				int v = img_msg->channels[0].values[i];
-				int feature_id = v / NUM_OF_CAM;
-				int camera_id = v % NUM_OF_CAM;
+				int feature_id = img_msg->channels[0].values[i];
 				double x = img_msg->points[i].x;
 				double y = img_msg->points[i].y;
 				double z = img_msg->points[i].z;
+				double u = img_msg->channels[1].values[i];
+				double v = img_msg->channels[2].values[i];
+				double vx = img_msg->channels[3].values[i];
+				double vy = img_msg->channels[4].values[i];
 				assert(z == 1);
-				image[feature_id].emplace_back(camera_id, Eigen::Vector3d(x, y, z));
+				Eigen::Matrix<double, 7, 1> xyz_uv_velocity;
+				xyz_uv_velocity << x, y, z, u, v, vx, vy;
+				image[feature_id].emplace_back(0, xyz_uv_velocity);
 			}
 
 			estimator.processImage(image, img_msg->header);

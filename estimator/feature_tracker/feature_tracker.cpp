@@ -78,9 +78,10 @@ void FeatureTracker::addPoints()
     }
 }
 
-void FeatureTracker::readImage(const cv::Mat &_img)
+void FeatureTracker::readImage(const cv::Mat &_img, double _cur_time)
 {
 	cv::Mat img;
+	cur_time = _cur_time;
 
     // 是否通过图像直方图提升光流跟踪的质量
 	if (EQUALIZE) {
@@ -123,18 +124,19 @@ void FeatureTracker::readImage(const cv::Mat &_img)
 		reduceVector(track_cnt, status);
     }
 
+	// 光流跟踪成功，特征点被跟踪次数加1
+	for (auto &n : track_cnt)
+		n++;
+
     if (PUB_THIS_FRAME) {
         rejectWithF();
-
-        for (auto &n : track_cnt)
-            n++;
 
         //TicToc t_m;
         setMask();
         //console::print_info("INFO: feature_track set mask costs %.1f ms.\n", t_m.toc());
 
         //TicToc t_goodFeature;
-        int n_max_cnt = MAX_CNT - static_cast<int>(forw_pts.size());
+		int n_max_cnt = MAX_CNT - static_cast<int>(forw_pts.size());
         if (n_max_cnt > 0) {
             if(mask.empty())
                 console::print_error("ERROR: feature_track mask is empty.\n");
@@ -151,11 +153,18 @@ void FeatureTracker::readImage(const cv::Mat &_img)
 
         addPoints();
 
-        prev_img = forw_img;
-        prev_pts = forw_pts;
+        //prev_img = forw_img;
+        //prev_pts = forw_pts;
     }
+	prev_img = cur_img;
+	prev_pts = cur_pts;
+	prev_un_pts = cur_un_pts;
+
     cur_img = forw_img;
     cur_pts = forw_pts;
+
+	undistortedPoints();
+	prev_time = cur_time;
 }
 
 void FeatureTracker::rejectWithF()
@@ -235,15 +244,58 @@ void FeatureTracker::showUndistortion(const std::string &name)
 	cv::waitKey(0);
 }
 
-std::vector<cv::Point2f> FeatureTracker::undistortedPoints()
+//std::vector<cv::Point2f> FeatureTracker::undistortedPoints()
+//{
+//	std::vector<cv::Point2f> un_pts;
+//	for (unsigned int i = 0; i < cur_pts.size(); ++i) {
+//		Eigen::Vector2d a(cur_pts[i].x, cur_pts[i].y);
+//		Eigen::Vector3d b;
+//		m_camera->liftProjective(a, b);
+//		un_pts.emplace_back(cv::Point2f(b.x() / b.z(), b.y() / b.z()));
+//	}
+//
+//	return un_pts;
+//}
+
+void FeatureTracker::undistortedPoints()
 {
-	std::vector<cv::Point2f> un_pts;
+	cur_un_pts.clear();
+	cur_un_pts_map.clear();
+	
 	for (unsigned int i = 0; i < cur_pts.size(); ++i) {
 		Eigen::Vector2d a(cur_pts[i].x, cur_pts[i].y);
 		Eigen::Vector3d b;
 		m_camera->liftProjective(a, b);
-		un_pts.emplace_back(cv::Point2f(b.x() / b.z(), b.y() / b.z()));
+
+		cv::Point2f lift_pt(b.x() / b.z(), b.y() / b.z());
+		cur_un_pts.emplace_back(lift_pt);
+		cur_un_pts_map.insert(std::make_pair(ids[i], lift_pt));
 	}
 
-	return un_pts;
+	if (!prev_un_pts_map.empty()) {
+		double dt = cur_time - prev_time;
+		pts_velocity.clear();
+		for (unsigned int i = 0; i < cur_un_pts.size(); ++i) {
+			if (ids[i] != -1) {
+				auto it = prev_un_pts_map.find(ids[i]);
+				if (it != prev_un_pts_map.end()) {
+					double v_x = (cur_un_pts[i].x - it->second.x) / dt;
+					double v_y = (cur_un_pts[i].y - it->second.y) / dt;
+					pts_velocity.emplace_back(cv::Point2f(v_x, v_y));
+				}
+				else {
+					pts_velocity.emplace_back(cv::Point2f(0, 0));
+				}
+			}
+			else {
+				pts_velocity.emplace_back(cv::Point2f(0, 0));
+			}
+		}
+	}
+	else {
+		for (unsigned int i = 0; i < cur_pts.size(); ++i) {
+			pts_velocity.emplace_back(cv::Point2f(0, 0));
+		}
+	}
+	prev_un_pts_map = cur_un_pts_map;
 }

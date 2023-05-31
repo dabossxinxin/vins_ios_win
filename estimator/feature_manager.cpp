@@ -36,7 +36,7 @@ int FeatureManager::getFeatureCount()
     return cnt;
 }
 
-bool FeatureManager::addFeatureCheckParallax(int frame_count, const std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>> &image)
+bool FeatureManager::addFeatureCheckParallax(int frame_count, const std::map<int, std::vector<std::pair<int, Eigen::Matrix<double,7,1>>>> &image, double td)
 {
     double parallax_sum = 0;
     int parallax_num = 0;
@@ -44,7 +44,7 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const std::map<int
 
 	// 将观测到的图像特征数据全部加入到this->feature中
     for (auto &id_pts : image) {
-        FeaturePerFrame f_per_fra(id_pts.second[0].second);
+		FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
 
         int feature_id = id_pts.first;
         auto it = find_if(feature.begin(), feature.end(), [feature_id](const FeaturePerId &it) {
@@ -56,14 +56,14 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const std::map<int
 			feature.back().feature_per_frame.emplace_back(f_per_fra);
         }
         else if (it->feature_id == feature_id) {
-            it->feature_per_frame.emplace_back(f_per_fra);
-            last_track_num++;
+			it->feature_per_frame.emplace_back(f_per_fra);
+			last_track_num++;
         }
     }
 
 	// 跟踪到的特征点数量较少或系统刚刚开始时，次新帧为关键帧
-    if (frame_count < 2 || last_track_num < 20)
-        return true;
+	if (frame_count < 2 || last_track_num < 20)
+		return true;
 
     for (auto &it_per_id : feature)
     {
@@ -71,7 +71,7 @@ bool FeatureManager::addFeatureCheckParallax(int frame_count, const std::map<int
             it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) - 1 >= frame_count - 1)
         {
 			parallax_sum += compensatedParallax2(it_per_id, frame_count);
-            parallax_num++;
+			parallax_num++;
         }
     }
 
@@ -255,14 +255,14 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
     for (auto it = feature.begin(), it_next = feature.begin();
          it != feature.end(); it = it_next)
     {
-        it_next++;
+		it_next++;
 
-        if (it->start_frame != 0)
-            it->start_frame--;
+		if (it->start_frame != 0)
+			it->start_frame--;
         else
         {
             Eigen::Vector3d uv_i = it->feature_per_frame[0].point;  
-            it->feature_per_frame.erase(it->feature_per_frame.begin());
+			it->feature_per_frame.erase(it->feature_per_frame.begin());
             if (it->feature_per_frame.size() < 2) {
                 feature.erase(it);
                 continue;
@@ -272,8 +272,8 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
                 Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;
                 Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P);
 				double dep_j = pts_j(2);
-                if (dep_j > 0)
-                    it->estimated_depth = dep_j;
+				if (dep_j > 0)
+					it->estimated_depth = dep_j;
                 else
                     it->estimated_depth = INIT_DEPTH;
             }
@@ -299,20 +299,27 @@ void FeatureManager::removeBack()
 
 void FeatureManager::removeFront(int frame_count)
 {
+	// 去掉特征观测中出现在次新帧中的观测量
     for (auto it = feature.begin(), it_next = feature.begin(); it != feature.end(); it = it_next) {
         it_next++;
 
+		// 若特征点第一次观测帧在最新帧
         if (it->start_frame == frame_count) {
 			it->start_frame--;
         }
         else {
+			// 若特征点观测到的最后一帧在次新帧之前
 			if (it->endFrame() < WINDOW_SIZE - 1) {
 				continue;
 			}
-            int j = WINDOW_SIZE - 1 - it->start_frame;
-			if (it->endFrame() < frame_count - 1)
+			if (it->endFrame() < frame_count - 1) {
 				continue;
+			}
+			// 去掉特征点在次新帧上的观测量
+			int j = WINDOW_SIZE - 1 - it->start_frame;
 			it->feature_per_frame.erase(it->feature_per_frame.begin() + j);
+
+			// 若当前特征已经没有观测量了，那么删除当前特征
 			if (it->feature_per_frame.size() == 0)
 				feature.erase(it);
         }
@@ -349,7 +356,7 @@ double FeatureManager::compensatedParallax2(const FeaturePerId &it_per_id, int f
     double v_i_comp = p_i_comp(1) / dep_i_comp;
     double du_comp = u_i_comp - u_j, dv_comp = v_i_comp - v_j;
 
-    ans = std::max(ans, sqrt(std::min(du * du + dv * dv, du_comp * du_comp + dv_comp * dv_comp)));
+	ans = std::max(ans, std::sqrt(std::min(du * du + dv * dv, du_comp * du_comp + dv_comp * dv_comp)));
 
 	return ans;
 }

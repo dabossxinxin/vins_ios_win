@@ -23,7 +23,7 @@ public:
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 	FeatureTracker();
 
-	void readImage(const cv::Mat &_img);
+	void readImage(const cv::Mat &_img, double _cur_time);
 
 	void setMask();
 
@@ -37,17 +37,31 @@ public:
 
 	void rejectWithF();
 
-	std::vector<cv::Point2f> undistortedPoints();
+	//std::vector<cv::Point2f> undistortedPoints();
+
+	void undistortedPoints();
+
+	double cur_time;
+	double prev_time;
 
 	cv::Mat		mask;			// 特征点数量不足时，用于再提取一些新特征所设置的mask
 	cv::Mat		fisheye_mask;	// 当所用相机为鱼眼相机时，鱼眼相机有效区域的mask
 	cv::Mat		prev_img;		// 上一需发布时刻图像
 	cv::Mat		cur_img;		// 上一跟踪时刻的图像
 	cv::Mat		forw_img;		// 当前帧时刻的图像
+
 	std::vector<cv::Point2f> n_pts;		// 特征数量不足时，新提取出的特征坐标
 	std::vector<cv::Point2f> prev_pts;	// 上一个发布帧中提取出来的图像特征
 	std::vector<cv::Point2f> cur_pts;	// 上一帧图像中提取出来的图像特征
 	std::vector<cv::Point2f> forw_pts;	// 当前帧光流跟踪上一帧得到的图像特征
+
+	std::vector<cv::Point2f> prev_un_pts;
+	std::vector<cv::Point2f> cur_un_pts;
+	std::vector<cv::Point2f> pts_velocity;
+
+	std::map<int, cv::Point2f> prev_un_pts_map;
+	std::map<int, cv::Point2f> cur_un_pts_map;
+
 	std::vector<int> ids;				// 当前帧所有特征的ID
 	std::vector<int> track_cnt;			// 当前帧所有特征的被跟踪次数
 	PinholeCameraPtr m_camera;			// 当前特征跟踪系统所使用的相机模型

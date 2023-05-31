@@ -24,6 +24,7 @@ double BIAS_GYR_THRESHOLD;
 double SOLVER_TIME;
 int NUM_ITERATIONS;
 int ESTIMATE_EXTRINSIC;
+int ESTIMATE_TD;
 std::string EX_CALIB_RESULT_PATH;
 std::string VINS_RESULT_PATH;
 int LOOP_CLOSURE = 0;
@@ -97,6 +98,7 @@ void readParameters(const std::string & config_file)
 	GYR_W = fsSettings["gyr_w"];
 	G.z() = fsSettings["g_norm"];
 
+	ESTIMATE_TD = fsSettings["estimate_td"];
 	ESTIMATE_EXTRINSIC = fsSettings["estimate_extrinsic"];
 	console::print_highlight("Estimate_Extrinsic: ");
 	console::print_value("%d\n", ESTIMATE_EXTRINSIC);

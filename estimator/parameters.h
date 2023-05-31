@@ -25,6 +25,7 @@ extern float VISUALLOOKATZ;
 extern double INIT_DEPTH;
 extern double MIN_PARALLAX;
 extern int ESTIMATE_EXTRINSIC;
+extern int ESTIMATE_TD;
 
 extern double ACC_N, ACC_W;
 extern double GYR_N, GYR_W;

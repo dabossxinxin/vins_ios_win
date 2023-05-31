@@ -1,5 +1,5 @@
 #include "marginalization_factor.h"
-#include "../utility/print.h"
+#include "utility/print.h"
 
 void ResidualBlockInfo::Evaluate()
 {
@@ -12,7 +12,6 @@ void ResidualBlockInfo::Evaluate()
 	for (int i = 0; i < static_cast<int>(block_sizes.size()); ++i) {
 		jacobians[i].resize(cost_function->num_residuals(), block_sizes[i]);
 		raw_jacobians[i] = jacobians[i].data();
-		//dim += block_sizes[i] == 7 ? 6 : block_sizes[i];
 	}
 	cost_function->Evaluate(parameter_blocks.data(), residuals.data(), raw_jacobians);
 
@@ -59,15 +58,15 @@ void ResidualBlockInfo::Evaluate()
             jacobians[i] = sqrt_rho1_ * (jacobians[i] - alpha_sq_norm_ * residuals * (residuals.transpose() * jacobians[i]));
         }
 
-        residuals *= residual_scaling_;
+		residuals *= residual_scaling_;
     }
 }
 
 MarginalizationInfo::~MarginalizationInfo()
 {
 	console::print_info("INFO: release marginlization info.\n");
-    for (auto it = parameter_block_data.begin(); it != parameter_block_data.end(); ++it)
-        delete it->second;
+	for (auto it = parameter_block_data.begin(); it != parameter_block_data.end(); ++it)
+		delete it->second;
 
     for (int i = 0; i < (int)factors.size(); ++i) {
         delete[] factors[i]->raw_jacobians;
@@ -83,13 +82,17 @@ void MarginalizationInfo::addResidualBlockInfo(ResidualBlockInfo *residual_block
 	const auto& parameter_blocks = residual_block_info->parameter_blocks;
 	const auto& parameter_block_sizes = residual_block_info->cost_function->parameter_block_sizes();
 
+	double *addr = nullptr;
+
+	// 将所有优化变量的size信息记录下来
     for (int i = 0; i < static_cast<int>(residual_block_info->parameter_blocks.size()); ++i) {
-		double *addr = parameter_blocks[i];
+		addr = parameter_blocks[i];
 		parameter_block_size[reinterpret_cast<long>(addr)] = parameter_block_sizes[i];
     }
 
+	// 把需要边缘化的优化变量放在前面记录下来
     for (int i = 0; i < static_cast<int>(residual_block_info->drop_set.size()); ++i) {
-		double *addr = parameter_blocks[residual_block_info->drop_set[i]];
+		addr = parameter_blocks[residual_block_info->drop_set[i]];
 		parameter_block_idx[reinterpret_cast<long>(addr)] = 0;
     }
 }
@@ -194,7 +197,7 @@ void MarginalizationInfo::marginalize()
     }
 
 	// 需要边缘化掉的矩阵维度
-    m = pos;
+	m = pos;
 
     for (const auto &it : parameter_block_size) {
         if (parameter_block_idx.find(it.first) == parameter_block_idx.end()) {
@@ -274,9 +277,9 @@ void MarginalizationInfo::marginalize()
     //printf("error1: %f\n", (Amm * Amm_inv - Eigen::MatrixXd::Identity(m, m)).sum());
 
     Eigen::VectorXd bmm = b.segment(0, m);
-    Eigen::MatrixXd Amr = A.block(0, m, m, n);
-    Eigen::MatrixXd Arm = A.block(m, 0, n, m);
-	Eigen::MatrixXd Arr = A.block(m, m, n, n);
+    Eigen::MatrixXd Amr = A.block(0, m, m, n);	// 右上角矩阵块
+    Eigen::MatrixXd Arm = A.block(m, 0, n, m);	// 左下角矩阵快
+	Eigen::MatrixXd Arr = A.block(m, m, n, n);	// 右下角矩阵块
 	Eigen::VectorXd brr = b.segment(m, n);
 	A = Arr - Arm * Amm_inv * Amr;
 	b = brr - Arm * Amm_inv * bmm;
@@ -289,7 +292,7 @@ void MarginalizationInfo::marginalize()
 	Eigen::VectorXd S_inv_sqrt = S_inv.cwiseSqrt();
 
 	linearized_jacobians = S_sqrt.asDiagonal() * saes2.eigenvectors().transpose();
-    linearized_residuals = S_inv_sqrt.asDiagonal() * saes2.eigenvectors().transpose() * b;
+	linearized_residuals = S_inv_sqrt.asDiagonal() * saes2.eigenvectors().transpose() * b;
 	//console::print_info("error: %f %f.\n", (linearized_jacobians.transpose()*linearized_jacobians - A).sum(),
 	//	(linearized_jacobians.transpose()*linearized_residuals - b).sum());
 	//console::print_info("INFO: marginalization margin inverse: %.1f ms.\n", t_margin_inv.toc());
@@ -297,7 +300,7 @@ void MarginalizationInfo::marginalize()
 
 std::vector<double *> MarginalizationInfo::getParameterBlocks(std::unordered_map<long, double*> &addr_shift)
 {
-    std::vector<double*> keep_block_addr;
+	std::vector<double*> keep_block_addr;
     keep_block_size.clear();
     keep_block_idx.clear();
     keep_block_data.clear();

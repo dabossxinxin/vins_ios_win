@@ -16,6 +16,7 @@
 #include "factor/imu_factor.h"
 #include "factor/pose_local_parameterization.h"
 #include "factor/projection_factor.h"
+#include "factor/projection_td_factor.h"
 #include "factor/marginalization_factor.h"
 
 #include <unordered_map>
@@ -52,7 +53,7 @@ public:
 
 	// interface
 	void processIMU(double t, const Eigen::Vector3d &linear_acceleration, const Eigen::Vector3d &angular_velocity);
-	void processImage(const std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>> &image, const std_msgs::Header &header);
+	void processImage(const std::map<int, std::vector<std::pair<int, Eigen::Matrix<double,7,1>>>> &image, const std_msgs::Header &header);
 
 	// internal
 	void clearState();
@@ -93,6 +94,7 @@ public:
 	Eigen::Matrix3d Rs[(WINDOW_SIZE + 1)];
 	Eigen::Vector3d Bas[(WINDOW_SIZE + 1)];
 	Eigen::Vector3d Bgs[(WINDOW_SIZE + 1)];
+	double td;
 
 	Eigen::Matrix3d back_R0, last_R, last_R0;
 	Eigen::Vector3d back_P0, last_P, last_P0;
@@ -132,6 +134,7 @@ public:
 	double para_Feature[NUM_OF_F][SIZE_FEATURE];
 	double para_Ex_Pose[NUM_OF_CAM][SIZE_POSE];
 	double para_Retrive_Pose[SIZE_POSE];
+	double para_Td[1][1];
 
 	RetriveData retrive_pose_data, front_pose;
 	std::vector<RetriveData> retrive_data_vector;

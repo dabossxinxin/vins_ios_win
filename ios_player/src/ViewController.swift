@@ -95,7 +95,7 @@ class ViewController: UIViewController, SCNSceneRendererDelegate {
     
     func stopCamera() {
         self.camera = nil
-        self.camera = nil
+        self.motion = nil
     }
     
     func setupScene() {

@@ -33,7 +33,9 @@ std::vector<uchar> r_status;
 std::vector<float> r_err;
 FeatureTracker trackerData[NUM_OF_CAM];
 double first_image_time;
+double last_image_time = 0;
 int pub_count = 1;
+bool init_pub = false;
 bool first_image_flag = true;
 bool running_flag = true;
 bool view_done = false;
@@ -89,6 +91,7 @@ float show_freq = -1;
 float feature_freq = -1;
 
 std::mutex mutex_key_pose;
+double td = 0;
 std::vector<Eigen::Vector3d> global_keypose;
 std::unordered_map<int, Eigen::Vector3d> local_landmarks;
 std::unordered_map<int, Eigen::Vector3d> global_landmarks;
@@ -318,7 +321,8 @@ void visualization()
 		}
 
 		std::unique_lock<std::mutex> lock_freq(m_real_freq);
-		logFREQ.Log(feature_freq, process_freq, show_freq);
+		//logFREQ.Log(feature_freq, process_freq, show_freq);
+		logFREQ.Log(td, td, td);
 		/*if (process_freq != -1 && feature_freq != -1 && show_freq != -1) {
 			feature_freq = -1;
 			process_freq = -1;
@@ -424,13 +428,13 @@ getMeasurements()
 	{
 		if (imu_buf.empty() || feature_buf.empty())
 			return measurements;
-		if (!(imu_buf.back()->header.stamp > feature_buf.front()->header.stamp)) {
+		if (!(imu_buf.back()->header.stamp.toSec() > feature_buf.front()->header.stamp.toSec() + estimator.td)) {
 			console::print_warn("WARN:wait for imu,only should happen at the beginning.\n");
 			sum_of_wait++;
 			return measurements;
 		}
 
-		if (!(imu_buf.front()->header.stamp < feature_buf.front()->header.stamp)) {
+		if (!(imu_buf.front()->header.stamp.toSec() < feature_buf.front()->header.stamp.toSec() + estimator.td)) {
 			console::print_warn("WARN:throw img,only should happen at the beginning.\n");
 			feature_buf.pop();
 			continue;
@@ -439,7 +443,7 @@ getMeasurements()
 		feature_buf.pop();
 
 		std::vector<sensor_msgs::ImuConstPtr> IMUs;
-		while (imu_buf.front()->header.stamp <= img_msg->header.stamp) {
+		while (imu_buf.front()->header.stamp.toSec() <= img_msg->header.stamp.toSec() + estimator.td) {
 			IMUs.emplace_back(imu_buf.front());
 			imu_buf.pop();
 		}
@@ -727,7 +731,7 @@ void process()
 
 			// 从配对的惯导-图像信息中取出图像特征信息
 			const auto& img_msg = measurement.second;
-			std::map<int, std::vector<std::pair<int, Eigen::Vector3d>>> image;
+			std::map<int, std::vector<std::pair<int, Eigen::Matrix<double,7,1>>>> image;
 			for (unsigned int i = 0; i < img_msg->points.size(); ++i) {
 				int v = img_msg->channels[0].values[i] + 0.5;
 				int feature_id = v / NUM_OF_CAM;
@@ -735,8 +739,15 @@ void process()
 				double x = img_msg->points[i].x;
 				double y = img_msg->points[i].y;
 				double z = img_msg->points[i].z;
+				double p_u = img_msg->channels[1].values[i];
+				double p_v = img_msg->channels[2].values[i];
+				double velocity_x = img_msg->channels[3].values[i];
+				double velocity_y = img_msg->channels[4].values[i];
 				assert(z == 1);
-				image[feature_id].emplace_back(camera_id, Eigen::Vector3d(x, y, z));
+
+				Eigen::Matrix<double, 7, 1> xyz_uv_velocity;
+				xyz_uv_velocity << x, y, z, p_u, p_v, velocity_x, velocity_y;
+				image[feature_id].emplace_back(camera_id, xyz_uv_velocity);
 			}
 
 			// 加入图像特征信息到系统中进行优化
@@ -747,6 +758,7 @@ void process()
                 global_keypose.emplace_back(estimator.Ps[WINDOW_SIZE]);
 				local_landmarks = std::move(estimator.local_cloud);
 				global_landmarks = estimator.global_cloud;
+				td = estimator.td;
 				key_pose_lock.unlock();
             }
 
@@ -871,11 +883,24 @@ void img_callback(const cv::Mat &show_img, const ros::Time &timestamp)
 	if (first_image_flag) {
 		first_image_flag = false;
 		first_image_time = timestamp.toSec();
+		last_image_time = timestamp.toSec();
+		return;
 	}
+
+	if (timestamp.toSec() - last_image_time > 1.0 ||
+		timestamp.toSec() < last_image_time) {
+		console::print_warn("WARN: image discontinue! reset the feature track.");
+		first_image_flag = true;
+		last_image_time = 0;
+		pub_count = 1;
+		return;
+	}
+	last_image_time = timestamp.toSec();
 
 	// 控制图像输入频率
 	if (std::round(1.0 * pub_count / (timestamp.toSec() - first_image_time)) <= FREQ) {
 		PUB_THIS_FRAME = true;
+		// 时间间隔内发布频率接近设定频率时，更新时间间隔起始时刻，并将数据发布次数置0
 		if (std::abs(1.0 * pub_count / (timestamp.toSec() - first_image_time) - FREQ) < 0.01 * FREQ) {
 			first_image_time = timestamp.toSec();
 			pub_count = 0;
@@ -888,7 +913,7 @@ void img_callback(const cv::Mat &show_img, const ros::Time &timestamp)
 	// 光流跟踪特征坐标
 	for (int i = 0; i < NUM_OF_CAM; ++i) {
 		if (i != 1 || !STEREO_TRACK)
-			trackerData[i].readImage(show_img.rowRange(ROW * i, ROW * (i + 1)));
+			trackerData[i].readImage(show_img.rowRange(ROW * i, ROW * (i + 1)), timestamp.toSec());
 		else {
 			if (EQUALIZE) {
 				cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
@@ -903,47 +928,6 @@ void img_callback(const cv::Mat &show_img, const ros::Time &timestamp)
 #endif
 	}
 
-    // 双目情况
-	if (PUB_THIS_FRAME && STEREO_TRACK && trackerData[0].cur_pts.size() > 0) {
-		pub_count++;
-		r_status.clear();
-		r_err.clear();
-
-		cv::calcOpticalFlowPyrLK(trackerData[0].cur_img, trackerData[1].cur_img, trackerData[0].cur_pts, trackerData[1].cur_pts, r_status, r_err, cv::Size(21, 21), 3);
-
-		std::vector<cv::Point2f> ll, rr;
-		std::vector<int> idx;
-		for (unsigned int i = 0; i < r_status.size(); i++) {
-			if (!inBorder(trackerData[1].cur_pts[i]))
-				r_status[i] = 0;
-
-			if (r_status[i]) {
-				idx.emplace_back(i);
-
-				Eigen::Vector3d tmp_p;
-				trackerData[0].m_camera->liftProjective(Eigen::Vector2d(trackerData[0].cur_pts[i].x, trackerData[0].cur_pts[i].y), tmp_p);
-				tmp_p.x() = FOCAL_LENGTH * tmp_p.x() / tmp_p.z() + COL / 2.0;
-				tmp_p.y() = FOCAL_LENGTH * tmp_p.y() / tmp_p.z() + ROW / 2.0;
-				ll.emplace_back(cv::Point2f(tmp_p.x(), tmp_p.y()));
-
-				trackerData[1].m_camera->liftProjective(Eigen::Vector2d(trackerData[1].cur_pts[i].x, trackerData[1].cur_pts[i].y), tmp_p);
-				tmp_p.x() = FOCAL_LENGTH * tmp_p.x() / tmp_p.z() + COL / 2.0;
-				tmp_p.y() = FOCAL_LENGTH * tmp_p.y() / tmp_p.z() + ROW / 2.0;
-				rr.emplace_back(cv::Point2f(tmp_p.x(), tmp_p.y()));
-			}
-		}
-		if (ll.size() >= 8) {
-			std::vector<uchar> status;
-			cv::findFundamentalMat(ll, rr, cv::FM_RANSAC, 1.0, 0.5, status);
-			int r_cnt = 0;
-			for (unsigned int i = 0; i < status.size(); i++) {
-				if (status[i] == 0)
-					r_status[idx[i]] = 0;
-				r_cnt += r_status[idx[i]];
-			}
-		}
-	}
-
     // 更新特征点ID
 	for (unsigned int i = 0;; i++) {
 		bool completed = false;
@@ -956,71 +940,65 @@ void img_callback(const cv::Mat &show_img, const ros::Time &timestamp)
 
 	if (PUB_THIS_FRAME) {
 		pub_count++;
-		sensor_msgs::PointCloudPtr feature_points(new sensor_msgs::PointCloud);
-		sensor_msgs::ChannelFloat32 id_of_point;
-		sensor_msgs::ChannelFloat32 u_of_point;
-		sensor_msgs::ChannelFloat32 v_of_point;
 
-		feature_points->header.stamp = timestamp;
-		feature_points->header.frame_id = "world";
+		if (!init_pub) {
+			init_pub = true;
+		}
+		else {
+			sensor_msgs::PointCloudPtr feature_points(new sensor_msgs::PointCloud);
+			sensor_msgs::ChannelFloat32 id_of_point;
+			sensor_msgs::ChannelFloat32 u_of_point;
+			sensor_msgs::ChannelFloat32 v_of_point;
+			sensor_msgs::ChannelFloat32 velocity_x_of_point;
+			sensor_msgs::ChannelFloat32 velocity_y_of_point;
 
-		std::vector<std::set<int>> hash_ids(NUM_OF_CAM);
-		for (int i = 0; i < NUM_OF_CAM; i++) {
-			if (i != 1 || !STEREO_TRACK) {
-				auto un_pts = trackerData[i].undistortedPoints();
-				auto &cur_pts = trackerData[i].cur_pts;
-				auto &ids = trackerData[i].ids;
-				for (int j = 0; j < int(ids.size()); ++j) {
-					int p_id = ids[j];
-					hash_ids[i].insert(p_id);
-					geometry_msgs::Point32 p;
-					p.x = un_pts[j].x;
-					p.y = un_pts[j].y;
-					p.z = 1;
+			feature_points->header.stamp = timestamp;
+			feature_points->header.frame_id = "world";
 
-					feature_points->points.emplace_back(p);
-					id_of_point.values.emplace_back(p_id * NUM_OF_CAM + i);
-					u_of_point.values.emplace_back(cur_pts[j].x);
-					v_of_point.values.emplace_back(cur_pts[j].y);
-					//assert(inBorder(cur_pts[j]));
-				}
-			}
-			else if (STEREO_TRACK) {
-				auto r_un_pts = trackerData[1].undistortedPoints();
-				auto &ids = trackerData[0].ids;
-				for (unsigned int j = 0; j < ids.size(); j++)
-				{
-					if (r_status[j])
-					{
-						int p_id = ids[j];
-						hash_ids[i].insert(p_id);
-						geometry_msgs::Point32 p;
-						p.x = r_un_pts[j].x;
-						p.y = r_un_pts[j].y;
-						p.z = 1;
+			std::vector<std::set<int>> hash_ids(NUM_OF_CAM);
+			for (int i = 0; i < NUM_OF_CAM; i++) {
+				if (i != 1 || !STEREO_TRACK) {
+					auto &un_pts = trackerData[i].cur_un_pts;
+					auto &cur_pts = trackerData[i].cur_pts;
+					auto &ids = trackerData[i].ids;
+					auto &pts_velocity = trackerData[i].pts_velocity;
+					for (int j = 0; j < int(ids.size()); ++j) {
+						if (trackerData[i].track_cnt[j] > 1) {
+							int p_id = ids[j];
+							geometry_msgs::Point32 p;
+							p.x = un_pts[j].x;
+							p.y = un_pts[j].y;
+							p.z = 1;
 
-						feature_points->points.emplace_back(p);
-						id_of_point.values.emplace_back(p_id * NUM_OF_CAM + i);
+							feature_points->points.emplace_back(p);
+							id_of_point.values.emplace_back(p_id);
+							u_of_point.values.emplace_back(cur_pts[j].x);
+							v_of_point.values.emplace_back(cur_pts[j].y);
+							velocity_x_of_point.values.emplace_back(pts_velocity[j].x);
+							velocity_y_of_point.values.emplace_back(pts_velocity[j].y);
+						}
 					}
 				}
 			}
-		}
-		feature_points->channels.emplace_back(id_of_point);
-		feature_points->channels.emplace_back(u_of_point);
-		feature_points->channels.emplace_back(v_of_point);
-		feature_callback(feature_points);
+			feature_points->channels.emplace_back(id_of_point);
+			feature_points->channels.emplace_back(u_of_point);
+			feature_points->channels.emplace_back(v_of_point);
+			feature_points->channels.emplace_back(velocity_x_of_point);
+			feature_points->channels.emplace_back(velocity_y_of_point);
+			feature_callback(feature_points);
 
-		// 可视化显示图像特征点
-		cv::Mat tmp_img;
-		cv::cvtColor(show_img, tmp_img, cv::COLOR_GRAY2RGB);
-		for (unsigned int j = 0; j < trackerData[0].cur_pts.size(); ++j) {
-			double len = std::min(1.0, 1.0 * trackerData[0].track_cnt[j] / WINDOW_SIZE_FEATURE_TRACKER);
-			cv::circle(tmp_img, trackerData[0].cur_pts[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
+			// 可视化显示图像特征点
+			cv::Mat tmp_img;
+			cv::cvtColor(show_img, tmp_img, cv::COLOR_GRAY2RGB);
+			for (unsigned int j = 0; j < trackerData[0].cur_pts.size(); ++j) {
+				double len = std::min(1.0, 1.0 * trackerData[0].track_cnt[j] / WINDOW_SIZE_FEATURE_TRACKER);
+				cv::circle(tmp_img, trackerData[0].cur_pts[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
+			}
+			std::unique_lock<std::mutex> lock(m_img_vis);
+			img_visualization = tmp_img;
+			cv::flip(img_visualization, img_visualization, 0);
+			lock.unlock();
 		}
-		std::unique_lock<std::mutex> lock(m_img_vis);
-		img_visualization = tmp_img;
-		cv::flip(img_visualization, img_visualization, 0);
-		lock.unlock();
 	}
 	
 	float t_feature = t_feature_static.toc();
@@ -1090,7 +1068,7 @@ void LoadImus(std::ifstream & fImus, const ros::Time &imageTimestamp)
 			imudata->linear_acceleration.y = data[5];
 			imudata->linear_acceleration.z = data[6];
 			uint32_t  sec = data[0];
-			uint32_t nsec = (data[0] - sec)*1e9;
+			uint32_t nsec = (data[0] - sec)*1e9 + 5;
 			//nsec = (nsec / 1000) * 1000 + 500;
 			imudata->header.stamp = ros::Time(sec, nsec);
 			imu_callback(imudata);
