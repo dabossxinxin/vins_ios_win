@@ -10,7 +10,6 @@
 #include <condition_variable>
 #include <opencv2/opencv.hpp>
 
-//#include "windows_player.h"
 #include "estimator.h"
 #include "parameters.h"
 #include "include/PointCloud.h"
@@ -274,7 +273,7 @@ void visualization()
 	plotterTic.SetBounds(float(20.0 / 768.0), float(220.0 / 768.0), float(10.0 / 1024.0), float(290.0 / 1024.0));
 	plotterTic.Track("$i");
 
-	pangolin::Plotter plotterFREQ(&logFREQ, 0.0f, 100.0f, 0.0f, 20.0f, 10.0f, 0.5f);
+	pangolin::Plotter plotterFREQ(&logFREQ, 0.0f, 100.0f, 0.0f, 0.5f, 10.0f, 0.001f);
 	plotterFREQ.SetBounds(float(460.0 / 768.0), float(660.0 / 768.0), float(10.0 / 1024.0), float(290.0 / 1024.0));
 	plotterFREQ.Track("$i");
 	
@@ -337,12 +336,10 @@ void visualization()
 		d_cam.Activate(s_cam);
 		DrawCurrentCamera(Twc);
 		if (menuShowPoints) {
-			//keyframe_database.viewPointClouds();
 			ViewCameraLandmark();
 		}
 		
 		if (menuShowPath) {
-			//keyframe_database.viewPath();
 			ViewCameraPath();
 		}
 
@@ -755,7 +752,7 @@ void process()
 
             if (estimator.solver_flag == estimator.NON_LINEAR) {
                 std::unique_lock<std::mutex> key_pose_lock(mutex_key_pose);
-                global_keypose.emplace_back(estimator.Ps[WINDOW_SIZE]);
+				global_keypose.emplace_back(estimator.Ps[WINDOW_SIZE]);
 				local_landmarks = std::move(estimator.local_cloud);
 				global_landmarks = estimator.global_cloud;
 				td = estimator.td;
@@ -1032,6 +1029,39 @@ void LoadImages(const std::string &strImagePath, const std::string &strTimesStam
 	}
 }
 
+void LoadImages(const std::string& path, std::vector<std::string>& imageFileNames,
+	std::vector<double>& timeStamps)
+{
+	std::ifstream fImages;
+	std::string filename = path + "/data.csv";
+	fImages.open(filename.c_str());
+	timeStamps.reserve(5000);
+	imageFileNames.reserve(5000);
+	while (!fImages.eof())
+	{
+		std::string s;
+		getline(fImages, s);
+		if (!s.empty())
+		{
+			char c = s.at(0);
+			if (c < '0' || c > '9')
+				continue;
+			std::stringstream ss;
+			ss << s;
+			double t;
+			ss >> t;
+			timeStamps.emplace_back(t / 1e9);
+
+			if (ss.peek() == ',' || ss.peek() == ' ')
+				ss.ignore();
+
+			std::string name;
+			ss >> name;
+			imageFileNames.emplace_back(path + "/data/" + name.c_str());
+		}
+	}
+}
+
 void LoadImus(std::ifstream & fImus, const ros::Time &imageTimestamp)
 {
 	while (!fImus.eof())
@@ -1068,7 +1098,7 @@ void LoadImus(std::ifstream & fImus, const ros::Time &imageTimestamp)
 			imudata->linear_acceleration.y = data[5];
 			imudata->linear_acceleration.z = data[6];
 			uint32_t  sec = data[0];
-			uint32_t nsec = (data[0] - sec)*1e9 + 5;
+			uint32_t nsec = (data[0] - sec)*1e9;
 			//nsec = (nsec / 1000) * 1000 + 500;
 			imudata->header.stamp = ros::Time(sec, nsec);
 			imu_callback(imudata);
@@ -1082,13 +1112,13 @@ void LoadImus(std::ifstream & fImus, const ros::Time &imageTimestamp)
 
 int main(int argc, char **argv)
 {
-	if (argc != 5) {
+	if (argc != 4) {
 		console::print_error("Usage: ./vins_estimator path_to_setting_file path_to_image_folder path_to_times_file path_to_imu_data_file\n");
 		return -1;
 	}
 
 	std::ifstream fImus;
-	fImus.open(argv[4]);
+	fImus.open(argv[3]);
 
 	cv::Mat image;
 	int ni = 0;
@@ -1102,7 +1132,8 @@ int main(int argc, char **argv)
 
 	std::vector<std::string> vStrImagesFileNames;
 	std::vector<double> vTimeStamps;
-	LoadImages(std::string(argv[2]), std::string(argv[3]), vStrImagesFileNames, vTimeStamps);
+	//LoadImages(std::string(argv[2]), std::string(argv[3]), vStrImagesFileNames, vTimeStamps);
+	LoadImages(std::string(argv[2]), vStrImagesFileNames, vTimeStamps);
 	m_camera = CameraFactory::instance()->generateCameraFromYamlFile(CAM_NAMES_ESTIMATOR);
 
 	int imageNum = vStrImagesFileNames.size();
