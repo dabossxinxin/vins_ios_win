@@ -832,9 +832,6 @@ void process()
 				}
 			}
 
-			//console::print_highlight("Current position: ");
-			//console::print_matrix(estimator.Ps[WINDOW_SIZE].data(), 1, 3);
-
 			std_msgs::Header header = img_msg->header;
 			header.frame_id = "world";
 			cur_header = header;
@@ -845,10 +842,6 @@ void process()
 				relocalize_r = estimator.relocalize_r;
 			}
 			pubOdometry(estimator, header, relocalize_t, relocalize_r);
-			//pubKeyPoses(estimator, header, relocalize_t, relocalize_r);
-			//pubCameraPose(estimator, header, relocalize_t, relocalize_r);
-			//pubPointCloud(estimator, header, relocalize_t, relocalize_r);
-		    //pubTF(estimator, header, relocalize_t, relocalize_r);
 			m_loop_drift.unlock();
 
 			float t_process = t_process_static.toc();
@@ -1170,13 +1163,6 @@ int main(int argc, char **argv)
 
 	std::thread process_thread(process);
 	process_thread.detach();
-
-	/*std::unique_lock<std::mutex> player_lock(mutex_player);
-	player.m_keypose.emplace_back(estimator.Ps[WINDOW_SIZE]);
-	player.m_localLandmarks = std::move(estimator.local_cloud);
-	player.m_globalLandmarks = estimator.global_cloud;
-	player_lock.unlock();*/
-	//player.play();
 	
 	visualization();
 

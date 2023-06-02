@@ -12,6 +12,7 @@ void Estimator::setParameter()
         tic[i] = TIC[i];
         ric[i] = RIC[i];
     }
+	td = TD;
     f_manager.setRic(ric);
     ProjectionFactor::sqrt_info = FOCAL_LENGTH / 1.5 * Eigen::Matrix2d::Identity();
 	ProjectionTdFactor::sqrt_info = FOCAL_LENGTH / 1.5 * Eigen::Matrix2d::Identity();
@@ -705,8 +706,8 @@ void Estimator::optimization()
 
         for (auto &it_per_frame : it_per_id.feature_per_frame) {
             imu_j++;
-            if (imu_i == imu_j)
-                continue;
+			if (imu_i == imu_j)
+				continue;
             
 			Eigen::Vector3d pts_j = it_per_frame.point;
 			if (ESTIMATE_TD) {

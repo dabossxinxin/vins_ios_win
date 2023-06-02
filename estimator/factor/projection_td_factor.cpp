@@ -3,6 +3,8 @@
 Eigen::Matrix2d ProjectionTdFactor::sqrt_info;
 double ProjectionTdFactor::sum_t;
 
+#undef UNIT_SPHERE_ERROR
+
 ProjectionTdFactor::ProjectionTdFactor(const Eigen::Vector3d& _pts_i, const Eigen::Vector3d& _pts_j,
 	const Eigen::Vector2d& _velocity_i, const Eigen::Vector2d& _velocity_j,
 	const double _td_i, const double _td_j, const double _row_i, const double _row_j) :
@@ -143,8 +145,13 @@ bool ProjectionTdFactor::Evaluate(double const* const *parameters, double *resid
 		if (jacobians[4])
 		{
 			Eigen::Map<Eigen::Vector2d> jacobian_td(jacobians[4]);
+#ifdef UNIT_SPHERE_ERROR
 			jacobian_td = reduce * ric.transpose()*Rj.transpose()*Ri*ric*velocity_i / inv_dep_i * -1.0 +
 				reduce_j * velocity_j;
+#else
+			jacobian_td = reduce * ric.transpose()*Rj.transpose()*Ri*ric*velocity_i / inv_dep_i * -1.0 +
+				sqrt_info * velocity_j.head<2>();
+#endif
 		}
 	}
 
@@ -218,7 +225,7 @@ bool ProjectionTdFactor::Evaluate(double const* const *parameters, double *resid
 			numericalSolution.col(k) = (tmp_residual - residual) / eps;
 		}
 
-		std::string filename = "C:\\Users\\Administrator\\Desktop\\projection_td_jacobians.txt";
+		std::string filename = "C:\\Users\\jackchen\\Desktop\\projection_td_jacobians.txt";
 		std::ofstream foutC(filename.c_str(), std::ios::app);
 		foutC.setf(std::ios::fixed, std::ios::floatfield);
 		foutC.precision(8);
