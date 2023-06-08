@@ -114,8 +114,8 @@ class IntegrationBase
 			V.block<3, 3>(6, 9) = V.block<3, 3>(6, 3);
 			V.block<3, 3>(9, 12) = Eigen::MatrixXd::Identity(3, 3) * _dt;
 			V.block<3, 3>(12, 15) = Eigen::MatrixXd::Identity(3, 3) * _dt;
-
-            jacobian = F * jacobian;
+			
+			jacobian = F * jacobian;
 			covariance = F * covariance * F.transpose() + V * noise * V.transpose();
         }
     }
