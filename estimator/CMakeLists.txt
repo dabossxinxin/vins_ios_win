@@ -56,4 +56,7 @@ target_link_libraries(vins_estimator
 	${CERES_LIBRARIES} 
 	${OpenCV_LIBRARIES}
 	DBoW
+	rabbitmq::rabbitmq-static
 )
+
+target_link_libraries(vins_estimator debug ${JSON_DEBUG_LIB} optimized ${JSON_RELEASE_LIB})

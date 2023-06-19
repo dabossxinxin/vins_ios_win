@@ -7,6 +7,7 @@
 #include <fstream>
 #include <chrono>
 
+#include <json/json.h>
 #include <condition_variable>
 #include <opencv2/opencv.hpp>
 
@@ -16,6 +17,7 @@
 #include "include/Imu.h"
 #include "utility/print.h"
 #include "utility/tic_toc.h"
+#include "utility/producer.h"
 #include "utility/visualization.h"
 #include "utility/camera_factory.h"
 #include "utility/pinhole_camera.h"
@@ -41,6 +43,9 @@ bool view_done = false;
 
 Estimator estimator;
 LoopClosure *loop_closure;
+
+RabbitMQProducer imuProducer;
+RabbitMQProducer imageProducer;
 
 std::condition_variable con;
 double current_time = -1;
@@ -454,6 +459,16 @@ void imu_callback(const sensor_msgs::ImuConstPtr &imu_msg)
 	m_buf.lock();
 	imu_buf.push(imu_msg);
 	m_buf.unlock();
+
+	Json::Value JSON_imu;
+	JSON_imu["timestamp"] = imu_msg->header.stamp.toSec();
+	JSON_imu["acc_x"] = imu_msg->linear_acceleration.x;
+	JSON_imu["acc_y"] = imu_msg->linear_acceleration.y;
+	JSON_imu["acc_z"] = imu_msg->linear_acceleration.z;
+	JSON_imu["gyr_x"] = imu_msg->angular_velocity.x;
+	JSON_imu["gyr_y"] = imu_msg->angular_velocity.y;
+	JSON_imu["gyr_z"] = imu_msg->angular_velocity.z;
+	imuProducer.send(JSON_imu.toStyledString());
   
 	std::unique_lock<std::mutex> lock_imu(m_state);
 	predict(imu_msg);
@@ -865,6 +880,8 @@ void img_callback(const cv::Mat &show_img, const ros::Time &timestamp)
 {
 	TicToc t_feature_static;
 
+	imageProducer.send(show_img, ".jpg");
+
 	if (LOOP_CLOSURE) {
 		i_buf.lock();
 		image_buf.push(std::make_pair(show_img, timestamp.toSec()));
@@ -1116,12 +1133,19 @@ int main(int argc, char **argv)
 	cv::Mat image;
 	int ni = 0;
 
-	//PlayerWindows player;
 	readParameters(argv[1]);
 
 	estimator.setParameter();
 	for (int i = 0; i < NUM_OF_CAM; i++)
 		trackerData[i].readIntrinsicParameter(CAM_NAMES[i]);
+
+	imuProducer = RabbitMQProducer("IMU_PRODUCER", "localhost", 5672, "imu_queue", "imu_exchange", "direct", "imu");
+	imuProducer.credential("xinxin", "xhl6457398yy");
+	imuProducer.run();
+
+	imageProducer = RabbitMQProducer("IMAGE_PRODUCER", "localhost", 5672, "image_queue", "image_exchange", "direct", "image");
+	imageProducer.credential("xinxin", "xhl6457398yy");
+	imageProducer.run();
 
 	std::vector<std::string> vStrImagesFileNames;
 	std::vector<double> vTimeStamps;
