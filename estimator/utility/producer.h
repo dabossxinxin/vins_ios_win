@@ -183,6 +183,38 @@ public:
 		producer_cv.notify_one();
 	}
 
+	// 时间戳为buffer前16位
+	// 图像数据为buffer16位后的全部数据
+	void send(const cv::Mat& img, double timestamp, std::string encoding_format = ".png")
+	{
+		using namespace std;
+		if (ex_ptr) rethrow_exception(ex_ptr);
+		if (img.empty()) throw exception("Error loading image!");
+
+		vector<unsigned char> img_buffer;
+		bool ok = cv::imencode(encoding_format, img, img_buffer);
+		if (!ok) throw exception("Error encoding image!");
+
+		std::string strStamp = std::to_string(timestamp);
+		while (strStamp.size() != 16) {
+			if (strStamp.size() < 16)
+				strStamp.push_back('0');
+			else
+				strStamp.pop_back();
+		}
+		img_buffer.insert(img_buffer.begin(), strStamp.begin(), strStamp.end());
+
+		std::cout << " [" << name.c_str() << "] Queuing an image of size: "
+			<< img.cols << "x" << img.rows << " "
+			<< std::setprecision(16) << "timestamp: " << timestamp << std::endl;
+
+		std::unique_lock<std::mutex> lock(producer_mutex);
+		msg_queue.push(img_buffer);
+		lock.unlock();
+	
+		producer_cv.notify_one();
+	}
+
 	void send_EOT()
 	{
 		using namespace std;

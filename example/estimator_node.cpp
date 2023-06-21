@@ -468,8 +468,14 @@ void imu_callback(const sensor_msgs::ImuConstPtr &imu_msg)
 	JSON_imu["gyr_x"] = imu_msg->angular_velocity.x;
 	JSON_imu["gyr_y"] = imu_msg->angular_velocity.y;
 	JSON_imu["gyr_z"] = imu_msg->angular_velocity.z;
-	imuProducer.send(JSON_imu.toStyledString());
-  
+
+	try {
+		imuProducer.send(JSON_imu.toStyledString());
+	}
+	catch (...) {
+		std::cout << "IMU_PRODUCER exception." << std::endl;
+	}
+	
 	std::unique_lock<std::mutex> lock_imu(m_state);
 	predict(imu_msg);
 	/*std_msgs::Header header = imu_msg->header;
@@ -879,9 +885,14 @@ void process()
 void img_callback(const cv::Mat &show_img, const ros::Time &timestamp)
 {
 	TicToc t_feature_static;
-
-	imageProducer.send(show_img, ".jpg");
-
+	try {
+		//imageProducer.send(show_img, ".jpg");
+		imageProducer.send(show_img, timestamp.toSec(), ".jpg");
+	}
+	catch (...){
+		std::cout << "IMAGE_PRODUCER exception." << std::endl;
+	}
+	
 	if (LOOP_CLOSURE) {
 		i_buf.lock();
 		image_buf.push(std::make_pair(show_img, timestamp.toSec()));
@@ -1147,9 +1158,8 @@ int main(int argc, char **argv)
 	imageProducer.credential("xinxin", "xhl6457398yy");
 	imageProducer.run();
 
-	std::vector<std::string> vStrImagesFileNames;
 	std::vector<double> vTimeStamps;
-	//LoadImages(std::string(argv[2]), std::string(argv[3]), vStrImagesFileNames, vTimeStamps);
+	std::vector<std::string> vStrImagesFileNames;
 	LoadImages(std::string(argv[2]), vStrImagesFileNames, vTimeStamps);
 	m_camera = CameraFactory::instance()->generateCameraFromYamlFile(CAM_NAMES_ESTIMATOR);
 
