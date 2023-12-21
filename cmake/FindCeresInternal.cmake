@@ -1,0 +1,2 @@
+
+FIND_PACKAGE(Ceres REQUIRED)

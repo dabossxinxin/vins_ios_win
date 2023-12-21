@@ -1,8 +1,8 @@
 
 ########################################################
-#													   #
-#			          编译DBoW库			           #
-#													   #	
+#													   						  #
+#			          				编译DBoW库			           					  #
+#													   						  #
 ########################################################
 file(GLOB VocaHdrs		"./*.hpp")
 file(GLOB DBoWHdrs		"./DBoW/*.h")
@@ -34,4 +34,4 @@ add_library(DBoW
 	${DVsionSrcs}
 )
 
-target_link_libraries(DBoW ${OpenCV_LIBRARIES}) 
+target_link_libraries(DBoW Boost::container OpenCV)

@@ -33,7 +33,8 @@
 #import <SceneKit/SceneKit.h>
 #import <Foundation/Foundation.h>
 
-@implementation ODOMETRY {
+@implementation ODOMETRY
+{
     UIImage *uiimage;
     cv::Mat cvimage;
     Estimator estimator;
@@ -72,19 +73,23 @@
     std::unordered_map<int, Eigen::Vector3d> global_landmarks;
 }
 
-std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCloudConstPtr>> getMeasurements(ODOMETRY const* odo) {
+std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCloudConstPtr>> getMeasurements(ODOMETRY const* odo)
+{
     std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCloudConstPtr>> measurements;
     
-    while(true) {
+    while(true)
+    {
         if (odo->imu_buf.empty() || odo->feature_buf.empty())
             return measurements;
-        if (!(odo->imu_buf.back()->header.stamp > odo->feature_buf.front()->header.stamp)) {
+        if (!(odo->imu_buf.back()->header.stamp > odo->feature_buf.front()->header.stamp))
+        {
             console::print_warn("WARN:wait for imu,only should happen at the beginning.\n");
             odo->sum_of_wait++;
             return measurements;
         }
 
-        if (!(odo->imu_buf.front()->header.stamp < odo->feature_buf.front()->header.stamp)) {
+        if (!(odo->imu_buf.front()->header.stamp < odo->feature_buf.front()->header.stamp))
+        {
             console::print_warn("WARN:throw img,only should happen at the beginning.\n");
             odo->feature_buf.pop();
             continue;
@@ -93,7 +98,8 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
         odo->feature_buf.pop();
 
         std::vector<sensor_msgs::ImuConstPtr> IMUs;
-        while (odo->imu_buf.front()->header.stamp <= img_msg->header.stamp) {
+        while (odo->imu_buf.front()->header.stamp <= img_msg->header.stamp)
+        {
             IMUs.emplace_back(odo->imu_buf.front());
             odo->imu_buf.pop();
         }
@@ -102,7 +108,8 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
     return measurements;
 }
 
-- (id)init {
+- (id)init
+{
     self->pub_count = 1;
     self->sum_of_wait = 0;
     self->first_image_flag = true;
@@ -114,8 +121,10 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
     return self;
 }
 
-- (void)process {
-    while(true) {
+- (void)process
+{
+    while(true)
+    {
         std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>, sensor_msgs::PointCloudConstPtr>> measurements;
         std::unique_lock<std::mutex> buf_lock(mutex_buf);
         con.wait(buf_lock,[&]{
@@ -123,13 +132,15 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
         });
         buf_lock.unlock();
         
-        for (const auto& measurement : measurements) {
+        for (const auto& measurement : measurements)
+        {
             for (const auto& imu_msg : measurement.first)
                 [self track_imu:imu_msg->header.stamp.toSec() ax:imu_msg->linear_acceleration.x ay:imu_msg->linear_acceleration.y az:imu_msg->linear_acceleration.z gx:imu_msg->angular_velocity.x gy:imu_msg->angular_velocity.y gz:imu_msg->angular_velocity.z];
             
             const auto& img_msg = measurement.second;
             std::map<int,std::vector<std::pair<int,Eigen::Vector3d>>> image;
-            for (unsigned int i = 0; i < img_msg->points.size(); ++i) {
+            for (unsigned int i = 0; i < img_msg->points.size(); ++i)
+            {
                 int feature_id = img_msg->channels[0].values[i];
                 double x = img_msg->points[i].x;
                 double y = img_msg->points[i].y;
@@ -140,7 +151,8 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
             
             //estimator.processImage(image, img_msg->header);
             
-            if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
+            if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
+            {
                 std::unique_lock<std::mutex> player_lock(mutex_player);
                 global_keypose.emplace_back(estimator.Ps[WINDOW_SIZE]);
                 local_landmarks = std::move(estimator.local_cloud);
@@ -151,7 +163,8 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
         
         mutex_buf.lock();
         mutex_state.lock();
-        if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR) {
+        if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
+        {
             [self latestPose_callback];
         }
         mutex_state.unlock();
@@ -159,7 +172,8 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
     }
 }
 
-- (void)processBuffer:(CMSampleBufferRef)buffer {
+- (void)processBuffer:(CMSampleBufferRef)buffer
+{
     CVImageBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(buffer);
     CVPixelBufferLockBaseAddress(pixelBuffer, 0);
     
@@ -173,14 +187,15 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
     CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
     
     cv::Mat rgb_image;
-    cv::cvtColor(raw_image, cvimage, cv::COLOR_BGRA2GRAY);
+    cv::cvtColor(raw_image, self->cvimage, cv::COLOR_BGRA2GRAY);
     cv::cvtColor(raw_image, rgb_image, cv::COLOR_BGRA2RGB);
     
     cv::flip(rgb_image,rgb_image,0);
-    uiimage = MatToUIImage(rgb_image);
+    self->uiimage = MatToUIImage(rgb_image);
 }
 
-- (void)gyr_callback:(double)t x:(double)x y:(double)y z:(double)z {
+- (void)gyr_callback:(double)t x:(double)x y:(double)y z:(double)z
+{
     sensor_msgs::ImuPtr gyr_msg(new sensor_msgs::Imu);
     gyr_msg->header.stamp = ros::Time(t);
     gyr_msg->angular_velocity.x = x;
@@ -200,7 +215,8 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
     
     sensor_msgs::ImuPtr imu_msg(new sensor_msgs::Imu);
     if (self->curr_acc->header.stamp >= self->gyro_buf[0]->header.stamp &&
-        self->curr_acc->header.stamp <= self->gyro_buf[1]->header.stamp) {
+        self->curr_acc->header.stamp <= self->gyro_buf[1]->header.stamp)
+    {
         imu_msg->header.stamp = self->curr_acc->header.stamp;
         imu_msg->linear_acceleration = self->curr_acc->linear_acceleration;
         
@@ -221,7 +237,8 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
     }
 }
 
-- (void)acc_callback:(double)t x:(double)x y:(double)y z:(double)z {
+- (void)acc_callback:(double)t x:(double)x y:(double)y z:(double)z
+{
     sensor_msgs::ImuPtr imu_msg(new sensor_msgs::Imu);
     imu_msg->header.stamp = ros::Time(t);
     imu_msg->linear_acceleration.x = x;
@@ -230,7 +247,8 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
     self->curr_acc = imu_msg;
 }
 
-- (void)imu_callback:(double)t ax:(double)ax ay:(double)ay az:(double)az gx:(double)gx gy:(double)gy gz:(double)gz {
+- (void)imu_callback:(double)t ax:(double)ax ay:(double)ay az:(double)az gx:(double)gx gy:(double)gy gz:(double)gz
+{
     sensor_msgs::ImuPtr imu_msg(new sensor_msgs::Imu);
     imu_msg->header.stamp = ros::Time(t);
     imu_msg->angular_velocity.x = ax;
@@ -245,7 +263,8 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
     buf_lock.unlock();
 }
 
-- (void)latestPose_callback {
+- (void)latestPose_callback
+{
     self->latest_time = self->current_time;
     self->tmp_P = self->estimator.Ps[WINDOW_SIZE];
     self->tmp_Q = self->estimator.Rs[WINDOW_SIZE];
@@ -264,7 +283,8 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
 }
         
 
-- (void)predict:(double)t ax:(double)ax ay:(double)ay az:(double)az gx:(double)gx gy:(double)gy gz:(double)gz {
+- (void)predict:(double)t ax:(double)ax ay:(double)ay az:(double)az gx:(double)gx gy:(double)gy gz:(double)gz
+{
     double dt = t - latest_time;
     latest_time = t;
 
@@ -287,7 +307,8 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
 }
 
 
-- (void)track_imu:(double)t ax:(double)ax ay:(double)ay az:(double)az gx:(double)gx gy:(double)gy gz:(double)gz {
+- (void)track_imu:(double)t ax:(double)ax ay:(double)ay az:(double)az gx:(double)gx gy:(double)gy gz:(double)gz
+{
     if (self->current_time < 0) {
         self->current_time = t;
     }
@@ -308,35 +329,40 @@ std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>,sensor_msgs::PointCl
     estimator.processIMU(dt, Eigen::Vector3d(dx,dy,dz), Eigen::Vector3d(rx,ry,rz));
 }
 
-
-- (void)image_callback:(double)t buffer:(CMSampleBufferRef)buffer {
+- (void)image_callback:(double)t buffer:(CMSampleBufferRef)buffer
+{
     [self processBuffer:buffer];
     
-    if (self->first_image_flag) {
+    if (self->first_image_flag)
+    {
         self->first_image_flag = false;
         self->first_image_time = t;
     }
     
-    if (std::round(1.0*pub_count/(t-self->first_image_time)) <= FREQ) {
+    if (std::round(1.0*pub_count/(t-self->first_image_time)) <= FREQ)
+    {
         PUB_THIS_FRAME = true;
-        if (std::abs(1.0*pub_count/(t-self->first_image_time)) - FREQ < 0.01*FREQ) {
+        if (std::abs(1.0*pub_count/(t-self->first_image_time)) - FREQ < 0.01*FREQ)
+        {
             self->first_image_time = t;
             self->pub_count = 0;
         }
-    } else {
-        PUB_THIS_FRAME = false;
     }
+    else
+        PUB_THIS_FRAME = false;
     
     tracker.readImage(self->cvimage);
     
-    for (unsigned int i = 0;; i++) {
+    for (unsigned int i = 0;; i++)
+    {
         bool completed = false;
         completed |= tracker.updateID(i);
         if (!completed)
             break;
     }
     
-    if (PUB_THIS_FRAME) {
+    if (PUB_THIS_FRAME)
+    {
         self->pub_count++;
         sensor_msgs::PointCloudPtr feature_points(new sensor_msgs::PointCloud);
         sensor_msgs::ChannelFloat32 id_of_point;

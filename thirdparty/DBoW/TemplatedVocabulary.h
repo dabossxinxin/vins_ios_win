@@ -1,34 +1,24 @@
-/**
- * File: TemplatedVocabulary.h
- * Date: February 2011
- * Author: Dorian Galvez-Lopez
- * Description: templated vocabulary 
- * License: see the LICENSE.txt file
- *
- */
 
 #ifndef __D_T_TEMPLATED_VOCABULARY__
 #define __D_T_TEMPLATED_VOCABULARY__
 
+#include <iostream>
 #include <cassert>
-
 #include <vector>
 #include <numeric>
 #include <fstream>
 #include <string>
 #include <algorithm>
-#include <opencv2/opencv.hpp>
 
 #include "FeatureVector.h"
 #include "BowVector.h"
 #include "ScoringObject.h"
 
 #include "../DUtils/DUtils.h"
-#include <iostream>
-// Added by VINS [[[
 #include "../VocabularyBinary.hpp"
+
+#include <opencv2/opencv.hpp>
 #include <boost/dynamic_bitset.hpp>
-// Added by VINS ]]]
 
 namespace DBoW2 {
 

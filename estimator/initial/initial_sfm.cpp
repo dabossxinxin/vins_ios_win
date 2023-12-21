@@ -205,7 +205,7 @@ bool GlobalSFM::construct(int frame_num, std::vector<Eigen::Quaterniond>& q,
 	}
 
 	ceres::Problem problem;
-	ceres::LocalParameterization* local_parameterization = new ceres::QuaternionParameterization();
+    ceres::Manifold* local_parameterization = new ceres::QuaternionManifold();
 
 	// 向优化问题中添加优化变量
 	for (int i = 0; i < frame_num; ++i) {
@@ -218,7 +218,7 @@ bool GlobalSFM::construct(int frame_num, std::vector<Eigen::Quaterniond>& q,
 		c_rotation[i][3] = c_Quat[i].z();
 
 		problem.AddParameterBlock(c_rotation[i].data(), 4, local_parameterization);
-		problem.AddParameterBlock(c_translation[i].data(), 3);
+        problem.AddParameterBlock(c_translation[i].data(), 3);
 
 		if (i == l) {
 			problem.SetParameterBlockConstant(c_rotation[i].data());

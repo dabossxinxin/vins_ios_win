@@ -1,15 +1,9 @@
-//
-//  ViewController.swift
-//  vins
-//
-//  Created by 熊鑫鑫 on 2023/5/17.
-//
 
 import UIKit
 import SceneKit
 
-class ViewController: UIViewController, SCNSceneRendererDelegate {
-
+class ViewController: UIViewController, SCNSceneRendererDelegate
+{
     var camera: Camera? = nil
     var motion: Motion? = nil
     var slamer: Odometry? = nil
@@ -30,7 +24,8 @@ class ViewController: UIViewController, SCNSceneRendererDelegate {
     @IBOutlet weak var button_debug: UIButton!
     @IBOutlet weak var button_switch: UISegmentedControl!
     
-    override func viewDidLoad() {
+    override func viewDidLoad()
+    {
         super.viewDidLoad()
                 
         setupScene()
@@ -40,8 +35,8 @@ class ViewController: UIViewController, SCNSceneRendererDelegate {
         self.sceneView.isPlaying = true
         self.sceneView.loops = true
         
-        NotificationCenter.default.addObserver(self, selector: #selector(applicationDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(applicationWillResignActive), name: UIApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(applicationDidBecomeActive), name: NSNotification.Name.UIApplicationDidBecomeActive, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(applicationWillResignActive), name: NSNotification.Name.UIApplicationWillResignActive, object: nil)
 
         textUI.clipsToBounds = true
         textUI.layer.cornerRadius = 10
@@ -59,16 +54,21 @@ class ViewController: UIViewController, SCNSceneRendererDelegate {
         button_reset.layer.cornerRadius = 10
     }
     
-    @objc func applicationDidBecomeActive() {
+    @objc func applicationDidBecomeActive()
+    {
         startCamera()
     }
 
-    @objc func applicationWillResignActive() {
+    @objc func applicationWillResignActive()
+    {
         stopCamera()
     }
     
-    func startCamera() {
-        guard let camera = Camera() else {
+    func startCamera()
+    {
+        guard let camera = Camera()
+        else
+        {
             NSLog("Cannot access camera.")
             return
         }
@@ -76,7 +76,9 @@ class ViewController: UIViewController, SCNSceneRendererDelegate {
         camera.setFps(20)
         camera.setFocus(0.835)
         
-        guard let motion = Motion() else {
+        guard let motion = Motion()
+        else
+        {
             NSLog("Cannot access motion.")
             return
         }
@@ -93,12 +95,14 @@ class ViewController: UIViewController, SCNSceneRendererDelegate {
         self.slamer?.imageView = imageView
     }
     
-    func stopCamera() {
+    func stopCamera()
+    {
         self.camera = nil
         self.motion = nil
     }
     
-    func setupScene() {
+    func setupScene()
+    {
         scene = SCNScene()
         scene.background.contentsTransform = SCNMatrix4MakeRotation(Float.pi/2, 0.0, 0.0, 1.0)
         
@@ -119,15 +123,18 @@ class ViewController: UIViewController, SCNSceneRendererDelegate {
         self.sceneView.backgroundColor = UIColor.systemGray6
     }
     
-    @IBAction func clickStartbutton(_ sender: UIButton) {
+    @IBAction func clickStartbutton(_ sender: UIButton)
+    {
         
     }
     
-    @IBAction func clickResetButton(_ sender: UIButton) {
+    @IBAction func clickResetButton(_ sender: UIButton)
+    {
         
     }
     
-    @IBAction func clickDebugButton(_ sender: UIButton) {
+    @IBAction func clickDebugButton(_ sender: UIButton)
+    {
         
     }
     

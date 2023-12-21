@@ -1,36 +1,9 @@
-/**
- * File: BRIEF.h
- * Author: Dorian Galvez-Lopez
- * Date: March 2011
- * Description: implementation of BRIEF (Binary Robust Independent 
- *   Elementary Features) descriptor by 
- *   Michael Calonder, Vincent Lepetit and Pascal Fua
- *   + close binary tests (by Dorian Galvez-Lopez)
- *
- * If you use this code with the RANDOM_CLOSE descriptor version, please cite:
-  @INPROCEEDINGS{GalvezIROS11,
-    author={Galvez-Lopez, Dorian and Tardos, Juan D.},
-    booktitle={Intelligent Robots and Systems (IROS), 2011 IEEE/RSJ International Conference on},
-    title={Real-time loop detection with bags of binary words},
-    year={2011},
-    month={sept.},
-    volume={},
-    number={},
-    pages={51 -58},
-    keywords={},
-    doi={10.1109/IROS.2011.6094885},
-    ISSN={2153-0858}
-  }
- *
- * License: see the LICENSE.txt file
- *
- */
 
 #ifndef __D_BRIEF__
 #define __D_BRIEF__
 
-#include <opencv2/opencv.hpp>
 #include <vector>
+#include <opencv2/opencv.hpp>
 #include <boost/dynamic_bitset.hpp>
 
 namespace DVision {

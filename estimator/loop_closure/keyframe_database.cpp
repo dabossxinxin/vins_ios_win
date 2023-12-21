@@ -270,8 +270,7 @@ void KeyFrameDatabase::optimize4DoFLoopPoseGraph(int cur_index, Eigen::Vector3d 
 	ceres::LossFunction *loss_function;
 	loss_function = new ceres::HuberLoss(1.0);
 	//loss_function = new ceres::CauchyLoss(1.0);
-	ceres::LocalParameterization* angle_local_parameterization =
-		AngleLocalParameterization::Create();
+    ceres::Manifold* angle_local_parameterization = AngleLocalParameterization::Create();
 
 	int i = 0;
 	for (auto it = keyFrameList.begin(); it != keyFrameList.end(); ++it)

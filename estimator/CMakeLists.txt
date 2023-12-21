@@ -1,8 +1,8 @@
 
 ########################################################
-#													   #
-#			编译visual inertial odometry库			   #
-#													   #	
+#													   						  #
+#							编译visual inertial odometry库			   				  #
+#													  						  #	
 ########################################################
 file(GLOB VioHdrs				"./*.h")
 file(GLOB VioFactorHdrs			"./factor/*.h")
@@ -53,10 +53,9 @@ add_library(vins_estimator
 )
 
 target_link_libraries(vins_estimator 
-	${CERES_LIBRARIES} 
-	${OpenCV_LIBRARIES}
+	Ceres::ceres
+	OpenCV
 	DBoW
-	rabbitmq::rabbitmq-static
+	Json
+	rabbitmq::rabbitmq
 )
-
-target_link_libraries(vins_estimator debug ${JSON_DEBUG_LIB} optimized ${JSON_RELEASE_LIB})

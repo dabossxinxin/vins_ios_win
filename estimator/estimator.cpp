@@ -652,14 +652,14 @@ void Estimator::optimization()
 
 	// 添加优化量P、V、Q、Ba、Bg
     for (int i = 0; i < WINDOW_SIZE + 1; ++i) {
-        ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization();
+        ceres::Manifold *local_parameterization = new PoseLocalParameterization();
 		problem.AddParameterBlock(para_Pose[i], SIZE_POSE, local_parameterization);
-		problem.AddParameterBlock(para_SpeedBias[i], SIZE_SPEEDBIAS);
+        problem.AddParameterBlock(para_SpeedBias[i], SIZE_SPEEDBIAS);
     }
 
 	// 添加相机-IMU外参优化量
     for (int i = 0; i < NUM_OF_CAM; ++i) {
-        ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization();
+        ceres::Manifold *local_parameterization = new PoseLocalParameterization();
         problem.AddParameterBlock(para_Ex_Pose[i], SIZE_POSE, local_parameterization);
         if (!ESTIMATE_EXTRINSIC) {
 			problem.SetParameterBlockConstant(para_Ex_Pose[i]);
@@ -736,7 +736,7 @@ void Estimator::optimization()
             for(int i = 0; i < WINDOW_SIZE; i++) {
                 if(retrive_data_vector[k].header == Headers[i].stamp.toSec()) {
                     relocalize = true;
-                    ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization();
+                    ceres::Manifold *local_parameterization = new PoseLocalParameterization();
                     problem.AddParameterBlock(retrive_data_vector[k].loop_pose, SIZE_POSE, local_parameterization);
                     loop_window_index = i;
 					loop_constraint_num++;
